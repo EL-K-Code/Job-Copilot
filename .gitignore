@@ -1,0 +1,39 @@
+# Virtual environment
+.venv/
+venv/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Environment files
+.env
+.env.local
+
+# Streamlit
+.streamlit/secrets.toml
+
+# Google OAuth tokens
+tokens/
+*.token.json
+
+# Generated vector store / indexes
+data/faiss_index/
+*.faiss
+*.pkl
+
+# Local generated data
+data/applications.json
+
+# OS / editor files
+.DS_Store
+.vscode/
+.idea/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Logs
+*.log
