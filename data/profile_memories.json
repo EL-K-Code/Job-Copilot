@@ -1,0 +1,242 @@
+[
+  {
+    "id": "identity_1",
+    "type": "identity",
+    "content": "Alex is a final-year Data Science student at ENSAI Rennes."
+  },
+  {
+    "id": "identity_2",
+    "type": "identity",
+    "content": "Alex has a research-oriented profile in AI, data science, and applied machine learning."
+  },
+  {
+    "id": "identity_3",
+    "type": "identity",
+    "content": "Alex is interested in building practical AI systems that connect modeling, software engineering, and real-world deployment."
+  },
+  {
+    "id": "education_1",
+    "type": "education",
+    "content": "Alex is enrolled in the Data Science and Engineering program at ENSAI Rennes from 2024 to 2026."
+  },
+  {
+    "id": "education_2",
+    "type": "education",
+    "content": "Alex completed an Engineering Degree in Statistics and Economics at ENSAE Dakar from 2020 to 2024."
+  },
+  {
+    "id": "experience_1",
+    "type": "experience",
+    "content": "Alex worked as a Data Scientist Intern at the United Nations World Food Programme in Rome in 2025."
+  },
+  {
+    "id": "experience_2",
+    "type": "experience",
+    "content": "At the World Food Programme, Alex developed a biometric duplicate detection system for humanitarian beneficiary management."
+  },
+  {
+    "id": "experience_3",
+    "type": "experience",
+    "content": "At the World Food Programme, Alex built a biometric matching pipeline combining deep learning feature extraction and minutiae-based techniques."
+  },
+  {
+    "id": "experience_4",
+    "type": "experience",
+    "content": "At the World Food Programme, Alex worked with TensorFlow-based biometric representations and evaluation workflows on operational data."
+  },
+  {
+    "id": "experience_5",
+    "type": "experience",
+    "content": "At the World Food Programme, Alex conducted threshold optimization and performance evaluation on biometric matching systems."
+  },
+  {
+    "id": "achievement_1",
+    "type": "achievement",
+    "content": "At the World Food Programme, Alex contributed to reducing duplicate biometric records and reducing dependence on proprietary third-party solutions."
+  },
+  {
+    "id": "experience_6",
+    "type": "experience",
+    "content": "Alex worked as a Data Analyst Intern at the National Agency of Statistics and Demography in Dakar in 2022."
+  },
+  {
+    "id": "experience_7",
+    "type": "experience",
+    "content": "At ANSD, Alex studied the sociodemographic determinants of youth migration using logistic regression and exploratory data analysis."
+  },
+  {
+    "id": "experience_8",
+    "type": "experience",
+    "content": "At ANSD, Alex worked with census or survey data and contributed to data quality assurance workflows."
+  },
+  {
+    "id": "experience_9",
+    "type": "experience",
+    "content": "Alex has experience supporting students on statistical analysis and research-related academic work."
+  },
+  {
+    "id": "skill_1",
+    "type": "skill",
+    "content": "Alex has strong programming experience in Python."
+  },
+  {
+    "id": "skill_2",
+    "type": "skill",
+    "content": "Alex also works with SQL and R."
+  },
+  {
+    "id": "skill_3",
+    "type": "skill",
+    "content": "Alex has experience with PyTorch, TensorFlow, and scikit-learn."
+  },
+  {
+    "id": "skill_4",
+    "type": "skill",
+    "content": "Alex has used FastAPI to build REST APIs."
+  },
+  {
+    "id": "skill_5",
+    "type": "skill",
+    "content": "Alex has experience with machine learning methods including logistic regression, linear regression, SVM, bagging, boosting, clustering, and PCA."
+  },
+  {
+    "id": "skill_6",
+    "type": "skill",
+    "content": "Alex has NLP experience in text preprocessing, tokenization, TF-IDF vectorization, topic modeling, and text classification."
+  },
+  {
+    "id": "skill_7",
+    "type": "skill",
+    "content": "Alex has worked on LLM-related topics including transformers, GPT-2 fine-tuning, knowledge distillation, and self-supervised learning."
+  },
+  {
+    "id": "skill_8",
+    "type": "skill",
+    "content": "Alex has experience with information retrieval concepts such as indexing, inverted indexes, query-based retrieval, and ranking."
+  },
+  {
+    "id": "skill_9",
+    "type": "skill",
+    "content": "Alex has cloud and infrastructure experience with AWS, Google Cloud Platform, Docker, Kubernetes, Terraform, and CI/CD tools."
+  },
+  {
+    "id": "skill_10",
+    "type": "skill",
+    "content": "Alex has used OpenCV and computer vision techniques in image-related projects."
+  },
+  {
+    "id": "skill_11",
+    "type": "skill",
+    "content": "Alex has experience with data collection, dashboards, and reporting tools such as Power BI, KoboToolBox, ODK, and Shiny."
+  },
+  {
+    "id": "project_1",
+    "type": "project",
+    "content": "Alex fine-tuned GPT-2 for supervised text classification and compared it with classical baselines."
+  },
+  {
+    "id": "project_2",
+    "type": "project",
+    "content": "Alex built a document retrieval and web indexing project with ingestion, preprocessing, indexing, and relevance ranking."
+  },
+  {
+    "id": "project_3",
+    "type": "project",
+    "content": "Alex developed Postagram, a serverless REST API project using AWS Lambda, S3, DynamoDB, API Gateway, FastAPI, and Terraform."
+  },
+  {
+    "id": "project_4",
+    "type": "project",
+    "content": "In Postagram, Alex implemented secure image upload with presigned URLs and automated image labeling with AWS Rekognition."
+  },
+  {
+    "id": "project_5",
+    "type": "project",
+    "content": "Alex worked on an LLM Planner Assistant that converts natural language scheduling instructions into structured JSON for calendar integration."
+  },
+  {
+    "id": "project_6",
+    "type": "project",
+    "content": "Alex completed a tweet classification project using an end-to-end NLP pipeline with TF-IDF, logistic regression, and random forest."
+  },
+  {
+    "id": "project_7",
+    "type": "project",
+    "content": "Alex completed a customer segmentation project using PCA and K-Means."
+  },
+  {
+    "id": "project_8",
+    "type": "project",
+    "content": "Alex worked on computer vision projects involving face detection and gender classification."
+  },
+  {
+    "id": "project_9",
+    "type": "project",
+    "content": "Alex has exposure to data engineering projects involving cloud ingestion pipelines, transformation layers, and analytical data modeling."
+  },
+  {
+    "id": "domain_1",
+    "type": "domain",
+    "content": "Alex is particularly interested in machine learning, deep learning, and applied AI."
+  },
+  {
+    "id": "domain_2",
+    "type": "domain",
+    "content": "Alex has recurring interest and experience in NLP, large language models, and retrieval systems."
+  },
+  {
+    "id": "domain_3",
+    "type": "domain",
+    "content": "Alex has recurring project exposure to computer vision, biometrics, and image analysis."
+  },
+  {
+    "id": "domain_4",
+    "type": "domain",
+    "content": "Alex has recurring project exposure to cloud infrastructure, APIs, and production-oriented data or AI systems."
+  },
+  {
+    "id": "preference_1",
+    "type": "preference",
+    "content": "Alex prefers concise, professional, and high-quality application emails."
+  },
+  {
+    "id": "preference_2",
+    "type": "preference",
+    "content": "Alex is especially motivated by applied AI systems that connect research, engineering, and product impact."
+  },
+  {
+    "id": "preference_3",
+    "type": "preference",
+    "content": "Alex tends to value internships where AI systems are deployed on real use cases rather than purely theoretical work."
+  },
+  {
+    "id": "goal_1",
+    "type": "goal",
+    "content": "Alex is seeking a final-year internship starting around March or April 2026."
+  },
+  {
+    "id": "goal_2",
+    "type": "goal",
+    "content": "Alex targets internships in Data Science, AI, NLP, LLM systems, automation, and agentic AI."
+  },
+  {
+    "id": "goal_3",
+    "type": "goal",
+    "content": "Alex is interested in roles involving retrieval pipelines, RAG architectures, prompt engineering, and AI product development."
+  },
+  {
+    "id": "goal_4",
+    "type": "goal",
+    "content": "Alex is open to pursuing research-oriented opportunities and potentially a PhD after industry experience."
+  },
+  {
+    "id": "language_1",
+    "type": "language",
+    "content": "Alex works in French and English."
+  },
+  {
+    "id": "language_2",
+    "type": "language",
+    "content": "Alex also lists Spanish among his working languages."
+  }
+]
