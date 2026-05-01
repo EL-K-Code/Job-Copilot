@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from dataclasses import dataclass
 from pathlib import Path
 import os
@@ -10,8 +12,7 @@ load_dotenv()
 @dataclass(frozen=True)
 class Settings:
     anthropic_api_key: str = os.getenv("ANTHROPIC_API_KEY", "")
-    anthropic_model: str = os.getenv("ANTHROPIC_MODEL", "claude-3-5-sonnet-latest")
-    tavily_api_key: str = os.getenv("TAVILY_API_KEY", "")
+    anthropic_model: str = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-6")
 
     google_client_secret_file: str = os.getenv("GOOGLE_CLIENT_SECRET_FILE", "credentials.json")
     google_token_dir: str = os.getenv("GOOGLE_TOKEN_DIR", "tokens")

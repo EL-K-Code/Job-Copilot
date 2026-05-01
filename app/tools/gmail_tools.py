@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import base64
 from email.message import EmailMessage
-from pathlib import Path
 from typing import Any
 
 from google.auth.transport.requests import Request
@@ -13,20 +12,17 @@ from googleapiclient.discovery import build
 from app.config import settings
 
 
-GMAIL_SCOPES = [
+GOOGLE_SCOPES = [
     "https://www.googleapis.com/auth/gmail.compose",
+    "https://www.googleapis.com/auth/calendar.events",
 ]
 
 
-def gmail_token_exists() -> bool:
+def google_token_exists() -> bool:
     return settings.google_token_path.exists()
 
 
-def get_gmail_credentials(interactive: bool = False) -> Credentials:
-    """
-    Load Gmail OAuth credentials from disk, refresh them if needed,
-    or trigger an interactive OAuth flow if allowed.
-    """
+def get_google_credentials(interactive: bool = False) -> Credentials:
     token_path = settings.google_token_path
     token_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -35,7 +31,7 @@ def get_gmail_credentials(interactive: bool = False) -> Credentials:
     if token_path.exists():
         creds = Credentials.from_authorized_user_file(
             str(token_path),
-            GMAIL_SCOPES,
+            GOOGLE_SCOPES,
         )
 
     if creds and creds.valid:
@@ -48,7 +44,7 @@ def get_gmail_credentials(interactive: bool = False) -> Credentials:
 
     if not interactive:
         raise RuntimeError(
-            "No valid Gmail token found. Run Gmail auth bootstrap first."
+            "No valid Google token found. Run Google auth bootstrap first."
         )
 
     credentials_file = settings.google_client_secret_path
@@ -59,22 +55,21 @@ def get_gmail_credentials(interactive: bool = False) -> Credentials:
 
     flow = InstalledAppFlow.from_client_secrets_file(
         str(credentials_file),
-        GMAIL_SCOPES,
+        GOOGLE_SCOPES,
     )
 
-    # Useful on remote/terminal-first environments.
     creds = flow.run_local_server(
-    host="127.0.0.1",
-    port=8090,
-    open_browser=False,
-)
+        host="127.0.0.1",
+        port=8080,
+        open_browser=True,
+    )
 
     token_path.write_text(creds.to_json(), encoding="utf-8")
     return creds
 
 
 def build_gmail_service(interactive: bool = False):
-    creds = get_gmail_credentials(interactive=interactive)
+    creds = get_google_credentials(interactive=interactive)
     return build("gmail", "v1", credentials=creds)
 
 
@@ -85,9 +80,6 @@ def _build_raw_email(
     cc: str | None = None,
     bcc: str | None = None,
 ) -> str:
-    """
-    Build a MIME email and return its base64url-encoded raw representation.
-    """
     message = EmailMessage()
     message["To"] = to
     message["Subject"] = subject
@@ -111,9 +103,6 @@ def create_gmail_draft(
     cc: str | None = None,
     bcc: str | None = None,
 ) -> dict[str, Any]:
-    """
-    Create a Gmail draft in the authenticated user's mailbox.
-    """
     service = build_gmail_service(interactive=False)
 
     raw_message = _build_raw_email(
