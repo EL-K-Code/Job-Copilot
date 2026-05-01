@@ -48,8 +48,10 @@ You will receive:
 Rules:
 - Write in clear professional English.
 - Keep the email concise and relevant.
-- Do not invent profile facts that are not present in the provided match insight.
-- Highlight the strongest alignment points between the candidate and the role.
+- Do not invent profile facts, tools, frameworks, or experiences.
+- Only mention candidate experiences that are explicitly supported by the provided match insight or retrieved profile memories.
+- Do not turn recommendations or suggested angles into factual claims.
+- Highlight the strongest supported alignment points between the candidate and the role.
 - The email should sound credible, specific, and tailored to the company and role.
 - Avoid generic buzzwords and empty enthusiasm.
 - Return only structured data matching the requested schema.

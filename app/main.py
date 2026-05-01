@@ -4,6 +4,11 @@ from app.services.llm import (
     generate_match_insight,
     generate_application_email_draft,
 )
+from app.services.applications_store import (
+    create_application_record,
+    add_application_record,
+    load_application_records,
+)
 
 
 def main() -> None:
@@ -64,6 +69,25 @@ def main() -> None:
 
     print("\n=== EMAIL BODY ===")
     print(email_draft.body)
+
+    print("\n=== STEP 5: Save application record ===")
+    record = create_application_record(
+        company=job_analysis.company,
+        role=job_analysis.role,
+        email_subject=email_draft.subject,
+        email_body=email_draft.body,
+        status="drafted",
+        source="manual",
+        notes="Generated from JobCopilot MVP pipeline.",
+    )
+    add_application_record(record)
+    print(record.model_dump())
+
+    print("\n=== STEP 6: Show stored application records ===")
+    records = load_application_records()
+    print(f"Total saved applications: {len(records)}")
+    for i, item in enumerate(records, start=1):
+        print(f"[{i}] {item.company} | {item.role} | {item.status} | {item.created_at}")
 
 
 if __name__ == "__main__":

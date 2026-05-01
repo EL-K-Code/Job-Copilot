@@ -1,0 +1,24 @@
+[
+  {
+    "company": "Andra Learning",
+    "role": "Stage / Alternance — IA Agentic & Automatisation",
+    "status": "drafted",
+    "source": "manual",
+    "notes": "Generated from JobCopilot MVP pipeline.",
+    "reminder_date": "",
+    "email_subject": "Application — Stage/Alternance IA Agentic & Automatisation | Alex",
+    "email_body": "Dear Andra Learning Team,\n\nI am writing to apply for the Agentic AI & Automation internship/apprenticeship position at Andra Learning. Your focus on building intelligent, LLM-powered workflows in a B2B EdTech environment aligns precisely with the direction I have been deliberately pursuing in my academic and personal projects.\n\nOne project I would highlight immediately is my LLM Planner Assistant — a system that converts natural language scheduling instructions into structured JSON for calendar integration. This work reflects two of the role's core missions directly: designing agentic workflows and integrating with calendar APIs. It also gave me hands-on experience reasoning about LLM output structure, reliability, and practical deployment constraints — challenges I understand are central to what your team is solving.\n\nMore broadly, my work in the LLM space spans transformer architectures, GPT-2 fine-tuning, knowledge distillation, and self-supervised learning. This foundation gives me a grounded understanding of the models — GPT, Claude — your stack relies on, and I am eager to extend that knowledge into production API integration and multi-step agentic pipelines.\n\nRAG architectures and retrieval pipelines are an active area of focus for me. I am drawn to the challenge of making LLM systems genuinely useful through precise retrieval and context management, and I see Andra Learning's product context as an ideal environment to develop that expertise in a meaningful, real-world setting.\n\nWhat attracts me most to this role is its scope: designing systems that connect modeling, software engineering, and deployment into coherent, working products. That intersection — not just building models, but making them operate reliably in a B2B product — is exactly where I want to grow.\n\nI would welcome the opportunity to discuss how my background and focus areas align with your team's roadmap.\n\nWarm regards,\nAlex",
+    "created_at": "2026-04-21T22:55:15.980175+00:00"
+  },
+  {
+    "company": "Wiremind",
+    "role": "Machine Learning Intern",
+    "status": "drafted",
+    "source": "streamlit",
+    "notes": "Saved from Streamlit UI.",
+    "reminder_date": "",
+    "email_subject": "Application for Machine Learning Intern – Wiremind (6-Month Internship)",
+    "email_body": "Dear Wiremind Hiring Team,\n\nI am writing to apply for the Machine Learning Intern position at Wiremind. Having followed Wiremind's work at the intersection of applied AI and revenue management for the transport industry, I am genuinely drawn to the depth and rigor of the technical challenges your team tackles — from forecasting and optimization to production-grade ML pipelines.\n\nMy background spans a broad range of core machine learning methods — including logistic regression, linear regression, SVM, bagging, boosting, clustering, and PCA — giving me a solid foundation in both classification and regression tasks. I have applied these methods in practice using Python, scikit-learn, and PyTorch, which I understand are central to Wiremind's stack. This hands-on experience with model building and evaluation translates directly to the missions described, particularly around designing and iterating on models to address challenges such as imbalanced data, skewed distributions, and feature engineering.\n\nBeyond model building, I have a research-oriented profile that I believe aligns well with Wiremind's expectation for interns to survey state-of-the-art methods and assess their applicability to domain-specific problems. I am comfortable navigating academic literature and translating findings into practical experimentation — a mindset I consider essential in an R&D-driven environment like yours.\n\nI am also genuinely interested in applied AI for real-world optimization domains. While my academic exposure has spanned several AI subfields, I am particularly motivated by the kind of structured, high-stakes prediction problems that define revenue management and demand forecasting — areas where rigorous modeling and careful evaluation have direct business impact.\n\nI would welcome the opportunity to contribute to Wiremind's ML team and grow within a production-oriented, intellectually demanding environment. I am available to discuss my profile at your convenience.\n\nThank you for your time and consideration.\n\nBest regards,\nAlex",
+    "created_at": "2026-04-21T23:06:45.998861+00:00"
+  }
+]

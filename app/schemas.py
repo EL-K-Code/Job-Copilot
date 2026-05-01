@@ -113,3 +113,15 @@ class ApplicationRecord(BaseModel):
         default="",
         description="Optional reminder date in YYYY-MM-DD format."
     )
+    email_subject: str = Field(
+        default="",
+        description="Generated application email subject."
+    )
+    email_body: str = Field(
+        default="",
+        description="Generated application email body."
+    )
+    created_at: str = Field(
+        default="",
+        description="Creation timestamp in ISO format."
+    )

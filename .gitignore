@@ -37,3 +37,7 @@ data/applications.json
 
 # Logs
 *.log
+# Secrets
+credentials.json
+tokens/
+.env
