@@ -531,18 +531,3 @@ Never commit:
 * `.env`
 
 Keep OAuth credentials local only.
-
-````
-
-Ensuite, ton `.gitignore` devrait au minimum contenir :
-
-```gitignore id="3608q4"
-.venv/
-__pycache__/
-*.pyc
-.env
-credentials.json
-tokens/
-data/faiss_index/
-````
-
