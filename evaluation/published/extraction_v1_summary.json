@@ -1,0 +1,63 @@
+{
+  "task": "structured_job_offer_extraction",
+  "dataset": "evaluation/job_offers.v1.jsonl",
+  "benchmark_version": "1.0.0",
+  "evaluation_protocol_version": "1.2.0",
+  "generated_at": "2026-07-24T13:13:29.628890+00:00",
+  "model": "claude-sonnet-4-6",
+  "dataset_sha256": "b14c2602d3a06ac5aa80f9d2580f2205270747ed95566aa6140d5fe477da7df5",
+  "prompt_sha256": "895ee4797dcf0423298f058f12927f71a2e50e0c7a69e589d0ff1b71ca95d7c2",
+  "aggregate": {
+    "number_of_cases": 50,
+    "mean_scalar_accuracy": 1.0,
+    "mean_strict_scalar_accuracy": 1.0,
+    "mean_macro_label_list_f1": 0.998,
+    "mean_summary_exact_f1": 1.0,
+    "scalar_accuracy_by_field": {
+      "company": 1.0,
+      "role": 1.0,
+      "location": 1.0,
+      "contract_type": 1.0,
+      "start_date": 1.0
+    },
+    "strict_scalar_accuracy_by_field": {
+      "company": 1.0,
+      "role": 1.0,
+      "location": 1.0,
+      "contract_type": 1.0,
+      "start_date": 1.0
+    },
+    "list_f1_by_field": {
+      "required_skills": 1.0,
+      "preferred_skills": 1.0,
+      "tools_and_stack": 1.0,
+      "domain_focus": 0.992
+    },
+    "summary_exact_f1_by_field": {
+      "missions_summary": 1.0
+    }
+  },
+  "deviations": [
+    {
+      "case_id": "offer_030",
+      "category": "Information Retrieval",
+      "field": "domain_focus",
+      "expected": ["information retrieval", "semantic search"],
+      "predicted": ["RAG", "Information retrieval", "Semantic search"],
+      "precision": 0.6666666666666666,
+      "recall": 1.0,
+      "f1": 0.8
+    },
+    {
+      "case_id": "offer_049",
+      "category": "Research",
+      "field": "domain_focus",
+      "expected": ["applied research", "reproducibility"],
+      "predicted": ["NLP", "Applied research", "Reproducibility"],
+      "precision": 0.6666666666666666,
+      "recall": 1.0,
+      "f1": 0.8
+    }
+  ],
+  "interpretation_boundary": "Synthetic, English-only, strongly templated regression suite; not evidence of production-level generalization."
+}
