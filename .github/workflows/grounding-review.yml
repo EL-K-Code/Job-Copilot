@@ -1,0 +1,124 @@
+name: JobCopilot Grounding Review Preparation
+
+on:
+  workflow_dispatch:
+    inputs:
+      case_count:
+        description: Number of generated emails to prepare for human claim review
+        required: true
+        default: "5"
+        type: choice
+        options:
+          - "5"
+          - "10"
+          - "50"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: jobcopilot-grounding-review
+  cancel-in-progress: false
+
+jobs:
+  prepare-grounding-review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      PROFILE_MEMORIES_FILE: data/profile_memories.example.json
+      ALLOW_TRUSTED_FAISS_DESERIALIZATION: "false"
+      PYTHONUNBUFFERED: "1"
+      TOKENIZERS_PARALLELISM: "false"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Cache Hugging Face models
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: ${{ runner.os }}-huggingface-all-MiniLM-L6-v2-v1
+
+      - name: Verify Anthropic secret
+        shell: bash
+        run: |
+          if [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "::error::Missing repository secret ANTHROPIC_API_KEY."
+            exit 1
+          fi
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Validate benchmark integrity
+        run: python scripts/validate_benchmark.py
+
+      - name: Prepare generated-email review records
+        shell: bash
+        run: |
+          if [ "${{ inputs.case_count }}" = "50" ]; then
+            LIMIT=0
+          else
+            LIMIT="${{ inputs.case_count }}"
+          fi
+
+          python scripts/prepare_email_grounding_review.py \
+            --dataset evaluation/job_offers.v1.jsonl \
+            --memories data/profile_memories.example.json \
+            --output evaluation/results/email_grounding_review.jsonl \
+            --limit "$LIMIT"
+
+      - name: Publish run summary
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from collections import Counter
+          from pathlib import Path
+
+          path = Path("evaluation/results/email_grounding_review.jsonl")
+          records = [
+              json.loads(line)
+              for line in path.read_text(encoding="utf-8").splitlines()
+              if line.strip()
+          ]
+          categories = Counter(record.get("category", "unknown") for record in records)
+          lines = [
+              "# JobCopilot Generated-Email Grounding Review",
+              "",
+              f"- Review records prepared: {len(records)}",
+              "- Candidate profile: fictional public profile",
+              "- Review status: `pending human claim-level annotation`",
+              "",
+              "This workflow does not calculate an unsupported-claim rate automatically.",
+              "A reviewer must split each email into factual candidate claims, then label each claim as `supported`, `unsupported`, or `ambiguous` using only retrieved memory IDs as evidence.",
+              "",
+              "## Category coverage",
+          ]
+          lines.extend(f"- {name}: {count}" for name, count in sorted(categories.items()))
+          lines.extend([
+              "",
+              "Download the JSONL artifact, complete the `claims` arrays, and then run `scripts/summarize_email_grounding_review.py`.",
+          ])
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as handle:
+              handle.write("\n".join(lines) + "\n")
+          PY
+
+      - name: Upload grounding review template
+        uses: actions/upload-artifact@v4
+        with:
+          name: jobcopilot-grounding-review-${{ github.run_number }}-${{ inputs.case_count }}-cases
+          path: evaluation/results/email_grounding_review.jsonl
+          if-no-files-found: error
+          retention-days: 30
