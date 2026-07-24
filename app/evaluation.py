@@ -17,16 +17,22 @@ SCALAR_FIELDS = (
     "start_date",
 )
 
+# Closed or near-closed label sets that are appropriate for exact set metrics.
 SCORED_LIST_FIELDS = (
-    "missions_summary",
     "required_skills",
     "preferred_skills",
     "tools_and_stack",
     "domain_focus",
 )
 
+# Mission summaries are direct extractions, but short paraphrases are valid. Keep an
+# exact lexical diagnostic without mixing it into the closed-label macro F1.
+SUMMARY_LIST_FIELDS = ("missions_summary",)
+
+# Generated recommendations require human or semantic review rather than exact
+# extraction scoring.
 UNSCORED_LIST_FIELDS = ("key_highlights_for_candidate",)
-LIST_FIELDS = SCORED_LIST_FIELDS
+LIST_FIELDS = (*SUMMARY_LIST_FIELDS, *SCORED_LIST_FIELDS)
 GROUNDING_LABELS = ("supported", "unsupported", "ambiguous")
 
 EVALUATION_ALIASES = {
@@ -49,25 +55,118 @@ EVALUATION_ALIASES = {
 }
 
 
+CONTRACT_CATEGORY_PATTERNS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    (
+        "unknown",
+        (
+            "unknown",
+            "not specified",
+            "not stated",
+            "non precise",
+            "non précisé",
+            "non indique",
+            "non indiqué",
+        ),
+    ),
+    (
+        "internship",
+        (
+            "research internship",
+            "internship",
+            "stage de recherche",
+            "stage",
+        ),
+    ),
+    (
+        "apprenticeship",
+        (
+            "apprenticeship",
+            "alternance",
+            "contrat d apprentissage",
+            "apprentissage",
+        ),
+    ),
+    (
+        "fixed-term",
+        (
+            "fixed term contract",
+            "fixed term",
+            "cdd",
+            "contrat a duree determinee",
+            "contrat à durée déterminée",
+        ),
+    ),
+    (
+        "freelance",
+        (
+            "freelance",
+            "independent contractor",
+            "contractor",
+        ),
+    ),
+    # When schedule and duration are combined, report the broad employment type.
+    # The strict exact-match diagnostic below still records omitted qualifiers.
+    (
+        "full-time",
+        (
+            "full time permanent role",
+            "full time permanent",
+            "full time",
+            "full-time permanent role",
+            "full-time permanent",
+            "full-time",
+        ),
+    ),
+    (
+        "permanent",
+        (
+            "permanent role",
+            "permanent",
+            "cdi",
+            "contrat a duree indeterminee",
+            "contrat à durée indéterminée",
+        ),
+    ),
+    (
+        "part-time",
+        (
+            "part time",
+            "part-time",
+            "temps partiel",
+        ),
+    ),
+)
+
+
 def normalize_text(value: str) -> str:
     return " ".join(value.strip().casefold().split())
 
 
-def normalize_evaluation_item(value: str) -> str:
-    """Normalize punctuation and replace documented expansions with acronyms."""
+def _normalize_plain_text(value: str) -> str:
     text = unicodedata.normalize("NFKC", str(value)).casefold()
     text = text.replace("&", " and ")
     text = re.sub(r"[-/()]", " ", text)
-    text = re.sub(r"[^\w+#.]+", " ", text)
-    text = " ".join(text.split())
+    text = re.sub(r"[^\w+#.àâäéèêëîïôöùûüç]+", " ", text)
+    return " ".join(text.split())
+
+
+def normalize_contract_category(value: str) -> str:
+    """Map multilingual contract wording to a broad comparable category."""
+    text = _normalize_plain_text(value)
+    for category, patterns in CONTRACT_CATEGORY_PATTERNS:
+        if any(_normalize_plain_text(pattern) in text for pattern in patterns):
+            return category
+    return text
+
+
+def normalize_evaluation_item(value: str) -> str:
+    """Normalize punctuation and replace documented expansions with acronyms."""
+    text = _normalize_plain_text(value)
 
     for alias in sorted(EVALUATION_ALIASES, key=len, reverse=True):
         canonical = EVALUATION_ALIASES[alias]
         text = re.sub(rf"(?<!\w){re.escape(alias)}(?!\w)", canonical, text)
 
-    # Expanded and abbreviated forms often appear together, for example
-    # "natural language processing (NLP)" -> "nlp nlp". Remove duplicate
-    # tokens while preserving the rest of the phrase, such as "llm evaluation".
     tokens: list[str] = []
     for token in text.split():
         if not tokens or token != tokens[-1]:
@@ -125,13 +224,35 @@ def evaluate_job_analysis(
     )
 
     scalar_scores: dict[str, float] = {}
+    strict_scalar_scores: dict[str, float] = {}
+    contract_type_details: dict[str, Any] | None = None
+
     for field in SCALAR_FIELDS:
         if field not in expected:
             continue
-        scalar_scores[field] = float(
-            normalize_text(str(predicted_data.get(field, "")))
-            == normalize_text(str(expected[field]))
+
+        predicted_value = str(predicted_data.get(field, ""))
+        expected_value = str(expected[field])
+        strict_match = float(
+            normalize_text(predicted_value) == normalize_text(expected_value)
         )
+        strict_scalar_scores[field] = strict_match
+
+        if field == "contract_type":
+            predicted_category = normalize_contract_category(predicted_value)
+            expected_category = normalize_contract_category(expected_value)
+            category_match = float(predicted_category == expected_category)
+            scalar_scores[field] = category_match
+            contract_type_details = {
+                "prediction": predicted_value,
+                "expected": expected_value,
+                "predicted_category": predicted_category,
+                "expected_category": expected_category,
+                "strict_match": strict_match,
+                "category_match": category_match,
+            }
+        else:
+            scalar_scores[field] = strict_match
 
     list_scores: dict[str, dict[str, float]] = {}
     for field in SCORED_LIST_FIELDS:
@@ -141,6 +262,22 @@ def evaluate_job_analysis(
             list(predicted_data.get(field, [])),
             list(expected[field]),
         )
+
+    summary_fields = {
+        field: {
+            **set_precision_recall_f1(
+                list(predicted_data.get(field, [])),
+                list(expected[field]),
+            ),
+            "prediction": list(predicted_data.get(field, [])),
+            "expected_reference": list(expected[field]),
+            "interpretation": (
+                "Exact normalized lexical diagnostic only; valid paraphrases may score as mismatches."
+            ),
+        }
+        for field in SUMMARY_LIST_FIELDS
+        if field in expected
+    }
 
     unscored_fields = {
         field: {
@@ -157,18 +294,35 @@ def evaluate_job_analysis(
         if scalar_scores
         else 0.0
     )
+    strict_scalar_accuracy = (
+        sum(strict_scalar_scores.values()) / len(strict_scalar_scores)
+        if strict_scalar_scores
+        else 0.0
+    )
     macro_list_f1 = (
         sum(metrics["f1"] for metrics in list_scores.values()) / len(list_scores)
         if list_scores
         else 0.0
     )
+    summary_exact_f1 = (
+        sum(metrics["f1"] for metrics in summary_fields.values()) / len(summary_fields)
+        if summary_fields
+        else 0.0
+    )
 
     return {
         "scalar_accuracy": scalar_accuracy,
+        "strict_scalar_accuracy": strict_scalar_accuracy,
         "macro_list_f1": macro_list_f1,
+        "macro_label_list_f1": macro_list_f1,
+        "summary_exact_f1": summary_exact_f1,
         "scored_list_fields": list(SCORED_LIST_FIELDS),
+        "summary_list_fields": list(SUMMARY_LIST_FIELDS),
         "scalar_fields": scalar_scores,
+        "strict_scalar_fields": strict_scalar_scores,
+        "contract_type_details": contract_type_details,
         "list_fields": list_scores,
+        "summary_fields": summary_fields,
         "unscored_fields": unscored_fields,
     }
 
