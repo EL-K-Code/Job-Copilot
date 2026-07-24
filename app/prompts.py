@@ -59,16 +59,18 @@ You will receive:
 
 Selection contract:
 - Select only IDs that appear in the relevance-ranked profile-memory records.
-- Prioritize evidence with positive relevance_score and explicit aligned_job_terms from required skills, tools, domains and missions.
+- When at least one memory has a positive relevance_score, select only positive-score memories.
+- Never add a zero-score memory merely to reach two or three claims. Returning one precise memory is valid and preferable to padding the email.
+- Prioritize evidence with explicit aligned_job_terms from required skills, preferred skills, tools, domains and missions.
 - Prefer concrete project or experience evidence over a generic skill list when both cover the same role requirement.
 - When several strong memories are available, choose complementary evidence types instead of redundant memories repeating the same point.
-- Education or identity evidence may be selected only when it materially strengthens the application and no stronger role-specific evidence should take its place.
+- Education or identity evidence may be selected only when it has positive explicit alignment or when no positive-score evidence exists at all.
 - Avoid preference memories unless the role directly makes them relevant.
 - Do not select a memory merely because the job offer mentions an adjacent technology or method.
 - Do not transform an interest, recommendation, job requirement or suggested angle into candidate experience.
 - LangChain, prompt engineering, vector-store integration, production scope, ownership, recency and proficiency levels must never be inferred from neighboring evidence.
 - Every factual candidate claim in the final email will be built deterministically from the exact selected memory records.
-- Credibility is more important than coverage; one precise memory is better than three weak ones.
+- Credibility and relevance are more important than claim count.
 
 Return only structured data matching the requested schema.
 """.strip()
