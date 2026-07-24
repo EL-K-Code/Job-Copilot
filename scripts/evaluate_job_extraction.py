@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from datetime import datetime, timezone
 import json
 import sys
 from pathlib import Path
@@ -10,24 +11,10 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+from app.config import settings
 from app.evaluation import evaluate_job_analysis
+from app.evaluation_dataset import load_benchmark_cases, summarize_benchmark
 from app.services.llm import analyze_job_offer
-
-
-def load_cases(path: Path) -> list[dict]:
-    cases: list[dict] = []
-    with path.open("r", encoding="utf-8") as file_handle:
-        for line_number, line in enumerate(file_handle, start=1):
-            normalized = line.strip()
-            if not normalized:
-                continue
-            try:
-                cases.append(json.loads(normalized))
-            except json.JSONDecodeError as exc:
-                raise ValueError(
-                    f"Invalid JSON on line {line_number} of {path}."
-                ) from exc
-    return cases
 
 
 def run_evaluation(cases: list[dict]) -> dict:
@@ -39,6 +26,7 @@ def run_evaluation(cases: list[dict]) -> dict:
         case_results.append(
             {
                 "id": case["id"],
+                "metadata": case["metadata"],
                 "prediction": prediction.model_dump(),
                 "expected": case["expected"],
                 "metrics": metrics,
@@ -46,6 +34,9 @@ def run_evaluation(cases: list[dict]) -> dict:
         )
 
     return {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "model": settings.anthropic_model,
+        "dataset_summary": summarize_benchmark(cases),
         "number_of_cases": len(case_results),
         "mean_scalar_accuracy": (
             mean(item["metrics"]["scalar_accuracy"] for item in case_results)
@@ -63,7 +54,7 @@ def run_evaluation(cases: list[dict]) -> dict:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Evaluate structured job-offer extraction on JSONL cases."
+        description="Evaluate structured job-offer extraction on validated JSONL cases."
     )
     parser.add_argument(
         "--dataset",
@@ -77,7 +68,8 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    report = run_evaluation(load_cases(args.dataset))
+    cases = load_benchmark_cases(args.dataset)
+    report = run_evaluation(cases)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(
         json.dumps(report, indent=2, ensure_ascii=False),
@@ -87,6 +79,7 @@ def main() -> None:
     print(
         json.dumps(
             {
+                "model": report["model"],
                 "number_of_cases": report["number_of_cases"],
                 "mean_scalar_accuracy": report["mean_scalar_accuracy"],
                 "mean_macro_list_f1": report["mean_macro_list_f1"],
