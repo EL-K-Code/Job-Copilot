@@ -8,5 +8,6 @@ class JobCopilotState(TypedDict, total=False):
     retrieval_query: str
     job_analysis: dict
     retrieved_memories: list[str]
+    retrieved_memory_records: list[dict]
     match_insight: dict
     email_draft: dict
