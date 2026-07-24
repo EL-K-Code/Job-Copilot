@@ -30,6 +30,50 @@ RISKY_CLAIM_PHRASES = (
     "vector stores",
 )
 
+_CLAIM_STOPWORDS = {
+    "a",
+    "an",
+    "and",
+    "are",
+    "as",
+    "at",
+    "be",
+    "been",
+    "being",
+    "by",
+    "candidate",
+    "for",
+    "from",
+    "had",
+    "has",
+    "have",
+    "i",
+    "in",
+    "is",
+    "it",
+    "me",
+    "my",
+    "of",
+    "on",
+    "that",
+    "the",
+    "their",
+    "this",
+    "to",
+    "was",
+    "were",
+    "with",
+}
+
+
+_ALIAS_PATTERNS = (
+    (r"\bretrieval augmented generation\b", "rag"),
+    (r"\bnatural language processing\b", "nlp"),
+    (r"\blarge language models?\b", "llm"),
+    (r"\bmachine learning\b", "ml"),
+    (r"\bapplication programming interfaces?\b", "api"),
+)
+
 
 def normalize_for_evidence(value: str) -> str:
     """Normalize prose for conservative evidence checks."""
@@ -37,6 +81,8 @@ def normalize_for_evidence(value: str) -> str:
     text = text.replace("&", " and ")
     text = re.sub(r"[-_/]", " ", text)
     text = re.sub(r"[^\w+#.]+", " ", text)
+    for pattern, replacement in _ALIAS_PATTERNS:
+        text = re.sub(pattern, replacement, text)
     return " ".join(text.split())
 
 
@@ -44,6 +90,64 @@ def _contains_phrase(text: str, phrase: str) -> bool:
     normalized_text = f" {normalize_for_evidence(text)} "
     normalized_phrase = f" {normalize_for_evidence(phrase)} "
     return normalized_phrase in normalized_text
+
+
+def _light_stem(token: str) -> str:
+    """Apply a small deterministic stemmer for common English inflections."""
+    for suffix in ("ingly", "edly", "ing", "ed", "es", "s"):
+        if token.endswith(suffix) and len(token) - len(suffix) >= 4:
+            stem = token[: -len(suffix)]
+            if len(stem) >= 3 and stem[-1:] == stem[-2:-1]:
+                stem = stem[:-1]
+            return stem
+    return token
+
+
+def _anchor_tokens(value: str) -> set[str]:
+    """Return content-bearing tokens used to link a claim to an email sentence."""
+    tokens = normalize_for_evidence(value).replace(".", " ").split()
+    return {
+        _light_stem(token)
+        for token in tokens
+        if token not in _CLAIM_STOPWORDS and len(token) > 2
+    }
+
+
+def _body_segments(email_body: str) -> list[str]:
+    """Split an email into sentence-like units for local claim matching."""
+    return [
+        segment.strip()
+        for segment in re.split(r"(?<=[.!?])\s+|\n+", email_body)
+        if segment.strip()
+    ]
+
+
+def _claim_is_represented_in_body(claim_text: str, email_body: str) -> bool:
+    """
+    Check whether one sentence in the body carries the material lexical anchors of
+    a claim. This permits harmless wording changes while rejecting disconnected
+    evidence ledgers.
+    """
+    normalized_claim = normalize_for_evidence(claim_text)
+    normalized_body = normalize_for_evidence(email_body)
+    if normalized_claim and normalized_claim in normalized_body:
+        return True
+
+    claim_tokens = _anchor_tokens(claim_text)
+    if not claim_tokens:
+        return False
+
+    minimum_matches = 1 if len(claim_tokens) == 1 else 2
+    if len(claim_tokens) >= 5:
+        minimum_matches = 3
+
+    for segment in _body_segments(email_body):
+        segment_tokens = _anchor_tokens(segment)
+        overlap = len(claim_tokens & segment_tokens)
+        coverage = overlap / len(claim_tokens)
+        if overlap >= minimum_matches and coverage >= 0.60:
+            return True
+    return False
 
 
 def normalize_memory_records(
@@ -78,7 +182,6 @@ def validate_claim_evidence(
 ) -> None:
     """Reject unknown evidence IDs and unsupported claim-strengthening language."""
     memory_by_id = {record["id"]: record["content"] for record in memory_records}
-    normalized_body = normalize_for_evidence(email_body or "")
 
     for claim_index, claim in enumerate(claims, start=1):
         claim_text = claim.claim.strip()
@@ -92,10 +195,10 @@ def validate_claim_evidence(
         if not supporting_ids:
             raise ValueError(f"Claim {claim_index} requires at least one memory ID.")
 
-        normalized_claim = normalize_for_evidence(claim_text)
-        if normalized_body and normalized_claim not in normalized_body:
+        if email_body and not _claim_is_represented_in_body(claim_text, email_body):
             raise ValueError(
-                f"Claim {claim_index} must appear verbatim in the generated email body."
+                f"Claim {claim_index} is not sufficiently represented in a single "
+                "sentence of the generated email body."
             )
 
         supporting_text = " ".join(
