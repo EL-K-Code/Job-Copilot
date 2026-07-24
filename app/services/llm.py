@@ -1,25 +1,33 @@
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any
 
 from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from app.config import settings
-from app.evidence import (
-    normalize_memory_records,
-    validate_claim_evidence,
-    validate_grounded_email_draft,
+from app.email_composer import (
+    compose_grounded_email_draft,
+    deterministic_fallback_selection,
+    validate_memory_selection,
 )
+from app.evidence import normalize_memory_records, validate_claim_evidence
 from app.prompts import (
+    EMAIL_DRAFT_SYSTEM_PROMPT,
     JOB_ANALYSIS_SYSTEM_PROMPT,
     JOB_MATCH_SYSTEM_PROMPT,
-    EMAIL_DRAFT_SYSTEM_PROMPT,
 )
-from app.schemas import JobAnalysis, MatchInsight, EmailDraft
+from app.schemas import (
+    EmailDraft,
+    EmailEvidenceSelection,
+    JobAnalysis,
+    MatchInsight,
+)
 
 
+logger = logging.getLogger(__name__)
 MemoryInput = dict[str, Any] | str
 
 
@@ -41,9 +49,14 @@ def get_match_insight_llm():
     return llm.with_structured_output(MatchInsight)
 
 
-def get_email_draft_llm():
+def get_email_evidence_selection_llm():
     llm = get_base_llm()
-    return llm.with_structured_output(EmailDraft)
+    return llm.with_structured_output(EmailEvidenceSelection)
+
+
+def get_email_draft_llm():
+    """Backward-compatible alias for the evidence-selection model."""
+    return get_email_evidence_selection_llm()
 
 
 def analyze_job_offer(job_text: str) -> JobAnalysis:
@@ -51,14 +64,11 @@ def analyze_job_offer(job_text: str) -> JobAnalysis:
         raise ValueError("The job offer text cannot be empty.")
 
     structured_llm = get_job_analysis_llm()
-
     messages = [
         SystemMessage(content=JOB_ANALYSIS_SYSTEM_PROMPT),
         HumanMessage(content=f"Job offer:\n{job_text}"),
     ]
-
-    result = structured_llm.invoke(messages)
-    return result
+    return structured_llm.invoke(messages)
 
 
 def generate_match_insight(
@@ -104,58 +114,68 @@ def generate_match_insight(
     return result
 
 
+def _select_email_evidence(
+    job_analysis: JobAnalysis,
+    match_insight: MatchInsight,
+    memory_records: list[dict[str, str]],
+) -> EmailEvidenceSelection:
+    """Use the LLM only to select retrieved evidence IDs, with a safe fallback."""
+    structured_llm = get_email_evidence_selection_llm()
+    messages = [
+        SystemMessage(content=EMAIL_DRAFT_SYSTEM_PROMPT),
+        HumanMessage(
+            content=(
+                "Select the strongest retrieved evidence for a concise application email.\n\n"
+                "Job analysis:\n"
+                f"{json.dumps(job_analysis.model_dump(), indent=2)}\n\n"
+                "Match insight:\n"
+                f"{json.dumps(match_insight.model_dump(), indent=2)}\n\n"
+                "Retrieved profile-memory records:\n"
+                f"{json.dumps(memory_records, indent=2)}"
+            )
+        ),
+    ]
+
+    try:
+        selection = structured_llm.invoke(messages)
+        validate_memory_selection(selection, memory_records)
+        return selection
+    except Exception as first_error:  # Structured-output and validation failures.
+        repair_message = HumanMessage(
+            content=(
+                "The previous evidence selection was invalid. Return only one to three IDs "
+                "that appear exactly in the retrieved memory records. Do not write claims or "
+                "email prose.\n\n"
+                f"Selection error: {first_error}"
+            )
+        )
+        try:
+            selection = structured_llm.invoke([*messages, repair_message])
+            validate_memory_selection(selection, memory_records)
+            return selection
+        except Exception as second_error:
+            logger.warning(
+                "Email evidence selection failed twice; using deterministic retrieval-order "
+                "fallback. Error: %s",
+                second_error,
+            )
+            return deterministic_fallback_selection(memory_records)
+
+
 def generate_application_email_draft(
     job_analysis: JobAnalysis,
     match_insight: MatchInsight,
     retrieved_profile_memories: list[MemoryInput] | None = None,
 ) -> EmailDraft:
-    structured_llm = get_email_draft_llm()
     memory_source: list[MemoryInput] = (
         retrieved_profile_memories
         if retrieved_profile_memories is not None
         else list(match_insight.relevant_profile_memories)
     )
     memory_records = normalize_memory_records(memory_source)
-
-    messages = [
-        SystemMessage(content=EMAIL_DRAFT_SYSTEM_PROMPT),
-        HumanMessage(
-            content=(
-                "Write a job application email draft based on the following information.\n\n"
-                "Job analysis:\n"
-                f"{json.dumps(job_analysis.model_dump(), indent=2)}\n\n"
-                "Match insight and approved factual claim plan:\n"
-                f"{json.dumps(match_insight.model_dump(), indent=2)}\n\n"
-                "Retrieved profile-memory records:\n"
-                f"{json.dumps(memory_records, indent=2)}\n\n"
-                "Use a premium professional tone, but preserve the exact strength and scope "
-                "of the evidence."
-            )
-        ),
-    ]
-
-    result = structured_llm.invoke(messages)
-    try:
-        validate_grounded_email_draft(result, memory_records)
-    except ValueError as first_error:
-        repair_message = HumanMessage(
-            content=(
-                "The previous draft failed deterministic grounding validation. Regenerate "
-                "a more conservative email. Every claim_evidence claim must be clearly and "
-                "locally represented in one body sentence, using the same material facts and "
-                "only directly supporting retrieved memory IDs. Harmless grammatical "
-                "rephrasing is allowed; stronger scope, ownership or proficiency is not.\n\n"
-                f"Validation error: {first_error}\n\n"
-                "Previous draft:\n"
-                f"{json.dumps(result.model_dump(), indent=2)}"
-            )
-        )
-        result = structured_llm.invoke([*messages, repair_message])
-        try:
-            validate_grounded_email_draft(result, memory_records)
-        except ValueError as second_error:
-            raise RuntimeError(
-                "The email draft could not satisfy the grounding contract after one repair "
-                "attempt."
-            ) from second_error
-    return result
+    selection = _select_email_evidence(job_analysis, match_insight, memory_records)
+    return compose_grounded_email_draft(
+        job_analysis=job_analysis,
+        selection=selection,
+        memory_records=memory_records,
+    )

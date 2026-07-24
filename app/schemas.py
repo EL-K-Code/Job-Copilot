@@ -112,6 +112,31 @@ class MatchInsight(BaseModel):
     )
 
 
+class EmailEvidenceSelection(BaseModel):
+    selected_memory_ids: list[str] = Field(
+        min_length=1,
+        max_length=3,
+        description=(
+            "One to three retrieved memory IDs containing the strongest directly relevant "
+            "candidate evidence for the application email."
+        ),
+    )
+    tone: Literal["professional", "warm", "concise", "premium"] = Field(
+        default="professional",
+        description="Tone used by the deterministic email composer.",
+    )
+
+    @field_validator("selected_memory_ids")
+    @classmethod
+    def validate_selected_memory_ids(cls, value: list[str]) -> list[str]:
+        normalized = list(dict.fromkeys(item.strip() for item in value if item.strip()))
+        if not normalized:
+            raise ValueError("At least one retrieved memory ID must be selected.")
+        if len(normalized) > 3:
+            raise ValueError("No more than three retrieved memory IDs may be selected.")
+        return normalized
+
+
 class EmailDraft(BaseModel):
     subject: str = Field(
         default="",
@@ -128,8 +153,9 @@ class EmailDraft(BaseModel):
     claim_evidence: list[EvidenceBackedClaim] = Field(
         default_factory=list,
         description=(
-            "Audit ledger for every factual candidate claim used in the email. Each claim "
-            "must appear verbatim in the body and reference retrieved memory IDs."
+            "Complete audit ledger for factual candidate claims in the email. The body is "
+            "constructed deterministically from this ledger so no hidden candidate claim can "
+            "be added outside it."
         ),
     )
 
