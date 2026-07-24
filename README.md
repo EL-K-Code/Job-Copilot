@@ -4,7 +4,7 @@
 
 ### Evidence-grounded, human-supervised agentic AI for job applications
 
-JobCopilot converts a raw job description into a structured and reviewable workflow: offer extraction, semantic profile retrieval, candidate-to-role matching, tailored email drafting, local application tracking and explicitly approved Gmail or Calendar actions.
+JobCopilot turns a raw job description into a structured and reviewable workflow: offer extraction, semantic profile retrieval, candidate-to-role matching, tailored email drafting, local application tracking and explicitly approved Gmail or Calendar actions.
 
 ![Python](https://img.shields.io/badge/Python-3.11+-3776AB?logo=python&logoColor=white)
 ![LangGraph](https://img.shields.io/badge/LangGraph-Agent%20Orchestration-1C3C3C)
@@ -18,17 +18,17 @@ JobCopilot converts a raw job description into a structured and reviewable workf
 
 ## Why this project exists
 
-Job applications are repetitive, fragmented and often written from generic summaries rather than verifiable candidate evidence.
+Job applications are repetitive and often written from generic summaries rather than verifiable candidate evidence.
 
-JobCopilot explores a more reliable process:
+JobCopilot explores a safer workflow:
 
-1. extract the requirements explicitly stated in an offer;
-2. retrieve only relevant evidence from a candidate memory;
+1. extract requirements explicitly stated in an offer;
+2. retrieve only relevant candidate memories;
 3. separate strengths, gaps and positioning suggestions;
-4. draft an application using the retrieved evidence;
+4. draft an email from the retrieved evidence;
 5. keep the human in control before external side effects;
 6. track the application and prepare a follow-up;
-7. evaluate the system with reproducible metrics rather than screenshots alone.
+7. measure extraction, retrieval and grounding rather than relying on screenshots alone.
 
 The project is not designed for indiscriminate mass applications. It is a **traceable, local and supervised AI engineering case study**.
 
@@ -46,7 +46,7 @@ The project is not designed for indiscriminate mass applications. It is a **trac
 | Conversational orchestration | LangGraph tool-calling agent with isolated chat threads |
 | Gmail and Calendar | Local Google OAuth with explicit confirmation gates |
 | Persistence | Atomic local JSON writes with duplicate checks |
-| Evaluation | Extraction metrics and synthetic starter benchmark |
+| Evaluation | 50 offers, 20 retrieval cases, static grounding and generated-email review |
 | Delivery | Streamlit UI, Dockerfile and GitHub Actions CI |
 
 ---
@@ -74,19 +74,18 @@ analyze_job
     -> generate_email
 ```
 
-The deterministic graph is compiled without a shared checkpointer. Each execution is stateless, which prevents job analyses from being mixed across sessions.
+The deterministic graph is stateless. Separate analyses therefore do not share a workflow checkpoint.
 
 ### Tool-calling agent
 
 The conversational agent can:
 
-- run the full JobCopilot pipeline;
-- preview a Gmail draft action;
-- preview a Calendar follow-up action;
-- save an application record locally;
+- run the JobCopilot pipeline;
+- preview Gmail and Calendar actions;
+- save application records;
 - list saved applications.
 
-Gmail and Calendar tools require `confirmed=true`. The agent is instructed to show the exact action and request confirmation before that flag may be used.
+Gmail and Calendar tools require `confirmed=true`. The agent must show the exact action and request confirmation before the side effect is allowed.
 
 ---
 
@@ -98,37 +97,29 @@ Gmail and Calendar tools require `confirmed=true`. The agent is instructed to sh
 
 ### Evidence grounding
 
-The matching prompt is restricted to:
-
-- the structured job analysis;
-- retrieved candidate memories.
-
-The email prompt must not transform a suggestion or an unsupported skill into a candidate claim.
+The matching prompt is restricted to the structured offer and retrieved candidate memories. The email prompt must not convert a suggestion or unsupported skill into a candidate claim.
 
 ### External-action approval
 
-The agent cannot create a Gmail draft or Calendar event merely because a user mentioned one. It first returns a preview and requires explicit confirmation of:
-
-- recipient, subject and body for Gmail;
-- company, role and date for Calendar.
+The agent cannot create a Gmail draft or Calendar event only because a user mentioned one. It first returns a preview and requires explicit confirmation of the final values.
 
 The dedicated Streamlit buttons represent direct user approval because the editable values are visible before the click.
 
 ### Safer FAISS handling
 
-LangChain FAISS persistence includes pickle-backed metadata. Persisted-store deserialization is therefore disabled by default.
+Persisted LangChain FAISS stores include pickle-backed metadata. Deserialization is disabled by default.
 
-JobCopilot rebuilds the in-memory index from auditable JSON and caches it for the lifetime of the process. Loading a persisted index requires:
+JobCopilot rebuilds the in-memory index from auditable JSON and caches it for the process lifetime. Loading a persisted index requires:
 
 ```env
 ALLOW_TRUSTED_FAISS_DESERIALIZATION=true
 ```
 
-This flag must only be used for an index generated locally and kept on a trusted machine.
+Enable this only for an index generated locally and kept on a trusted machine.
 
 ### Atomic local persistence
 
-Application records are written through a temporary file and atomically replace the target JSON file. Invalid JSON raises an explicit error instead of silently behaving like an empty database and risking data loss.
+Application records are written through a temporary file and atomically replace the target JSON file. Invalid JSON raises an explicit error instead of silently behaving like an empty database.
 
 ### Input validation
 
@@ -140,11 +131,11 @@ Before Gmail or Calendar calls, JobCopilot validates:
 - follow-up date format;
 - event start and end ordering.
 
-See [`SECURITY.md`](SECURITY.md) for the complete trust model and deployment warnings.
+See [`SECURITY.md`](SECURITY.md) for the complete trust model.
 
 ---
 
-## Public demo data versus private profile data
+## Public demo data and private profile data
 
 The repository ships with:
 
@@ -152,7 +143,7 @@ The repository ships with:
 data/profile_memories.example.json
 ```
 
-This file contains a fictional candidate profile and makes the repository safe to demonstrate publicly.
+This file contains a fictional candidate profile.
 
 For a personal local profile:
 
@@ -164,37 +155,96 @@ For a personal local profile:
 PROFILE_MEMORIES_FILE=data/profile_memories.json
 ```
 
-`data/profile_memories.json` is ignored by Git and must remain private.
+`data/profile_memories.json`, OAuth credentials, tokens and generated application records are ignored by Git.
 
 ---
 
-## Evaluation
+## Benchmark V1
 
-The repository includes a starter evaluation harness for structured job extraction.
+Benchmark V1 is a frozen synthetic suite designed for reproducible engineering evaluation without redistributing private candidate data or copyrighted job advertisements.
+
+It contains:
+
+- **50 annotated job offers** across 10 role families;
+- **20 profile-memory retrieval cases**;
+- **20 isolated grounding-label cases**;
+- a workflow for reviewing claims in emails actually generated by JobCopilot.
+
+Validate the frozen datasets:
+
+```bash
+python scripts/validate_benchmark.py
+```
+
+### 1. Structured extraction
+
+Run a smoke evaluation:
+
+```bash
+python scripts/evaluate_job_extraction.py --limit 5
+```
+
+Run the full 50-offer benchmark:
 
 ```bash
 python scripts/evaluate_job_extraction.py
 ```
 
-The runner evaluates:
+The report contains:
 
-- normalized exact accuracy for scalar fields;
-- set precision, recall and F1 for list fields;
-- macro list-field F1;
-- per-case predictions for error analysis.
+- exact normalized accuracy for scalar fields;
+- precision, recall and F1 for list fields;
+- aggregate scores and available dataset slices;
+- case-level predictions;
+- model name, dataset hash, prompt hash and timestamp.
 
-The included dataset contains only synthetic test cases. It validates the evaluation pipeline but does **not** support production-accuracy claims.
+### 2. Profile-memory retrieval
 
-See [`evaluation/README.md`](evaluation/README.md) for the protocol and benchmark roadmap.
+```bash
+python scripts/evaluate_retrieval.py
+```
 
-Planned system-level evaluation includes:
+Reported metrics:
 
-- Recall@k and NDCG@k for candidate-memory retrieval;
-- supported versus unsupported candidate-claim rate;
-- human review of email relevance and factuality;
-- tool-call success and duplicate-action rate;
-- latency and model cost per workflow;
-- regression comparisons across prompt and model versions.
+- Recall@1, Recall@3 and Recall@5;
+- MRR;
+- NDCG@1, NDCG@3 and NDCG@5.
+
+### 3. Static grounding-label classification
+
+`evaluation/grounding_cases.v1.jsonl` contains isolated claims and evidence references. Predictions are scored with:
+
+```bash
+python scripts/evaluate_grounding.py \
+  --predictions evaluation/results/grounding_predictions.jsonl
+```
+
+This tests grounding-label classification. It does not by itself measure claims in generated emails.
+
+### 4. Generated-email grounding review
+
+Prepare JobCopilot emails for human claim-level review:
+
+```bash
+python scripts/prepare_email_grounding_review.py --limit 10
+```
+
+Use `--limit 0` for all 50 offers. Reviewers label each factual candidate claim as:
+
+- `supported`;
+- `unsupported`;
+- `ambiguous`.
+
+After annotation, calculate the actual generated-email unsupported-claim rate:
+
+```bash
+python scripts/summarize_email_grounding_review.py \
+  --annotations evaluation/results/email_grounding_review.jsonl
+```
+
+See [`evaluation/README.md`](evaluation/README.md) for the complete protocol.
+
+> Benchmark V1 is synthetic and manually authored. It supports regression testing and comparative experiments, not production-accuracy or job-market generalization claims.
 
 ---
 
@@ -203,46 +253,37 @@ Planned system-level evaluation includes:
 ```text
 app/
   agent_graph.py
-  agent_state.py
   agent_tools.py
   config.py
   evaluation.py
   graph.py
-  main.py
+  grounding_review.py
   memory.py
   prompts.py
   schemas.py
-  state.py
-
   services/
-    applications_store.py
-    llm.py
-
   tools/
-    gmail_tools.py
-    calendar_tools.py
-
   ui/
-    streamlit_app.py
 
 data/
   profile_memories.example.json
 
 evaluation/
   README.md
-  job_offers.sample.jsonl
+  email_grounding_review.example.jsonl
+  grounding_cases.v1.jsonl
+  job_offers.v1.jsonl
+  retrieval_cases.v1.jsonl
 
 scripts/
+  evaluate_grounding.py
   evaluate_job_extraction.py
+  evaluate_retrieval.py
+  prepare_email_grounding_review.py
+  summarize_email_grounding_review.py
+  validate_benchmark.py
 
 tests/
-  test_agent_safety.py
-  test_applications_store.py
-  test_calendar_tools.py
-  test_evaluation.py
-  test_gmail_tools.py
-  test_schemas.py
-
 .github/workflows/ci.yml
 Dockerfile
 SECURITY.md
@@ -252,7 +293,7 @@ SECURITY.md
 
 ## Local setup
 
-### 1. Clone and create an environment
+### 1. Create an environment
 
 ```bash
 git clone https://github.com/EL-K-Code/Job-Copilot.git
@@ -290,7 +331,7 @@ pip install -r requirements-dev.txt
 cp .env.example .env
 ```
 
-At minimum, set:
+At minimum:
 
 ```env
 ANTHROPIC_API_KEY=your_local_key
@@ -301,14 +342,6 @@ Never commit the resulting `.env` file.
 
 ### 4. Run the application
 
-Backend workflow:
-
-```bash
-python -m app.main
-```
-
-Streamlit interface:
-
 ```bash
 streamlit run app/ui/streamlit_app.py --server.address 127.0.0.1 --server.port 8501
 ```
@@ -317,13 +350,13 @@ streamlit run app/ui/streamlit_app.py --server.address 127.0.0.1 --server.port 8
 
 ## Google OAuth setup
 
-To enable Gmail and Calendar actions locally:
+To enable Gmail and Calendar locally:
 
 1. create a Google Cloud project;
 2. enable Gmail API and Google Calendar API;
 3. configure the OAuth consent screen;
 4. create a Desktop OAuth client;
-5. save the downloaded client configuration as `credentials.json`;
+5. save the downloaded file as `credentials.json`;
 6. run:
 
 ```bash
@@ -336,13 +369,9 @@ The OAuth file and generated tokens are ignored by Git.
 
 ## Docker
 
-Build the local image:
-
 ```bash
 docker build -t jobcopilot .
 ```
-
-Run it with local configuration and data mounted explicitly:
 
 ```bash
 docker run --rm -p 8501:8501 \
@@ -357,26 +386,28 @@ Do not bake credentials, OAuth tokens or personal profile files into the image.
 
 ---
 
-## Tests and continuous integration
+## Tests and CI
 
 Run locally:
 
 ```bash
-python -m compileall -q app tests
+python -m compileall -q app scripts tests
+python scripts/validate_benchmark.py
 pytest -q
 ```
 
-GitHub Actions runs the same syntax and unit-test checks for pull requests and pushes to `main`.
+GitHub Actions runs the same syntax, benchmark-integrity and unit-test checks for pull requests and pushes to `main`.
 
-The current test suite covers:
+The suite covers:
 
 - duplicate detection and atomic JSON persistence;
 - corrupted-store behavior;
 - agent confirmation gates;
-- Gmail validation and header-injection rejection;
-- Calendar payload validation;
+- Gmail and Calendar validation;
 - schema validation;
-- evaluation metrics.
+- extraction, retrieval and static grounding metrics;
+- generated-email grounding-review validation;
+- benchmark size and reference integrity.
 
 ---
 
@@ -390,41 +421,25 @@ Known limitations:
 - the agent checkpointer is in memory;
 - there is no authentication or multi-user authorization;
 - no public hosted deployment is configured;
-- the extraction benchmark is still a small synthetic starter set;
-- retrieval does not yet include a learned reranker or calibrated relevance threshold;
+- Benchmark V1 is synthetic and manually authored;
+- generated-email grounding still requires human claim segmentation and review;
+- retrieval has no learned reranker or calibrated relevance threshold;
 - Gmail and Calendar rely on local desktop OAuth;
-- observability is limited and does not yet provide full traces, cost accounting or redacted audit logs.
+- observability does not yet provide full traces, cost accounting or redacted audit logs.
 
 ---
 
-## Engineering roadmap
+## Roadmap
 
-1. expand the frozen human-annotated evaluation set;
-2. add retrieval judgments, Recall@k and NDCG@k;
-3. add candidate-claim support auditing;
-4. migrate persistence to SQLite with migrations and repository interfaces;
-5. introduce structured tracing and redacted audit logs;
-6. add a reranking layer and retrieval thresholds;
-7. add recorded approval metadata for every external action;
+1. run and publish controlled results on the frozen 50-offer benchmark;
+2. complete generated-email grounding review across all 50 cases;
+3. add a second independent annotator and adjudicate disagreements;
+4. add licensed or redistributable real-world offers;
+5. migrate persistence to SQLite with migrations;
+6. introduce structured tracing and redacted audit logs;
+7. add retrieval reranking and calibrated relevance thresholds;
 8. publish screenshots and a short synthetic-data demonstration;
-9. deploy only after authentication, secret management and per-user isolation are implemented.
-
----
-
-## What this project demonstrates
-
-JobCopilot is designed to demonstrate more than prompt engineering:
-
-- applied LLM engineering;
-- structured extraction and validation;
-- retrieval-augmented reasoning;
-- semantic profile memory;
-- deterministic and agentic LangGraph orchestration;
-- human-supervised tool use;
-- external API integration;
-- evaluation engineering;
-- security-aware product design;
-- reproducible delivery with tests, CI and Docker.
+9. deploy only after authentication, secret management and per-user isolation.
 
 ---
 
