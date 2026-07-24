@@ -2,14 +2,18 @@
 
 JobCopilot is evaluated as a system, not only demonstrated through a successful prompt.
 
-## Evaluation protocol 1.1
+## Evaluation protocol 1.2
 
-Protocol 1.1 corrects two issues identified during the first five-case run:
+Protocol 1.2 makes four distinct measurements explicit instead of collapsing them into one score:
 
-1. `key_highlights_for_candidate` is a generated recommendation field, not a direct extraction field, so it is displayed for review but excluded from macro extraction F1;
-2. documented acronym and expanded-form equivalents are normalized during scoring, for example NLP / natural language processing and RAG / retrieval-augmented generation.
+1. normalized scalar accuracy, where `contract_type` is compared through a broad multilingual category;
+2. strict scalar accuracy, which preserves exact normalized wording as a diagnostic;
+3. closed-label list F1 for skills, tools and domains;
+4. exact mission-summary F1 as a separate lexical diagnostic because valid paraphrases may differ.
 
-The normalization replaces known expansions inside an item while preserving semantic modifiers. For example, `LLM evaluation` remains different from `LLM deployment`, and `responsible AI` remains different from `agentic AI`.
+`key_highlights_for_candidate` remains visible for review but is excluded from extraction F1 because it is a generated recommendation field.
+
+The evaluator also normalizes documented acronym and expanded-form equivalents such as NLP / natural language processing and RAG / retrieval-augmented generation. Semantic modifiers remain distinct: `LLM evaluation` is different from `LLM deployment`, and `responsible AI` is different from `agentic AI`.
 
 ## Available suites
 
@@ -48,7 +52,7 @@ Both extraction runs require a configured Anthropic API key.
 
 ## Extraction metrics
 
-Scored scalar fields:
+### Scalar fields
 
 - company;
 - role;
@@ -56,24 +60,45 @@ Scored scalar fields:
 - contract type;
 - start date.
 
-Scored list fields:
+For `contract_type`, the report contains two views:
 
-- missions summary;
+- `scalar_fields.contract_type`: broad normalized category match, supporting multilingual equivalents such as `CDI` / `Permanent`, `Stage` / `Internship`, and `Full-time permanent role` / `Full-time`;
+- `strict_scalar_fields.contract_type`: exact normalized wording match, preserving omitted qualifiers as a visible diagnostic.
+
+The aggregate report therefore includes both `mean_scalar_accuracy` and `mean_strict_scalar_accuracy`.
+
+### Closed-label list fields
+
+The macro list F1 covers only fields that behave like label sets:
+
 - required skills;
 - preferred skills;
 - tools and stack;
 - domain focus.
 
+These fields are reported under `list_fields`, with aggregate metric `mean_macro_label_list_f1`. The backward-compatible key `mean_macro_list_f1` carries the same value.
+
+### Mission summaries
+
+`missions_summary` remains a direct extraction target, but a short faithful paraphrase may not match the reference text exactly. It is therefore reported separately under `summary_fields` with `mean_summary_exact_f1`.
+
+This is an exact normalized lexical diagnostic, not a semantic-equivalence claim. A stronger evaluation should add blinded human review or a separately validated semantic metric.
+
+### Generated recommendations
+
+`key_highlights_for_candidate` remains in each case report under `unscored_fields`. It requires human or semantic evaluation because the schema asks for actionable recommendations rather than copied labels.
+
+## Report contents
+
 Reported outputs include:
 
-- aggregate scalar accuracy;
-- macro extraction-list F1;
+- normalized and strict scalar accuracy;
+- closed-label macro F1;
+- exact mission-summary F1 as a diagnostic;
 - accuracy or F1 by individual field;
 - slices by language, category and difficulty when metadata is available;
 - case-level predictions and expected values;
 - model name, dataset version, evaluation-protocol version, dataset hash, prompt hash and timestamp.
-
-`key_highlights_for_candidate` remains in each case report under `unscored_fields`. It requires a separate human or semantic evaluation because the schema asks for actionable recommendations, while the old reference values were only short skill labels.
 
 ## Contract-type extraction rule
 
