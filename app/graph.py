@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph import START, END, StateGraph
 
 from app.memory import retrieve_profile_context
@@ -85,8 +84,9 @@ def build_jobcopilot_graph():
     builder.add_edge("generate_match", "generate_email")
     builder.add_edge("generate_email", END)
 
-    checkpointer = InMemorySaver()
-    return builder.compile(checkpointer=checkpointer)
+    # The deterministic pipeline is stateless. Compiling it without a shared
+    # checkpointer prevents cross-session state from being retained or mixed.
+    return builder.compile()
 
 
 jobcopilot_graph = build_jobcopilot_graph()
