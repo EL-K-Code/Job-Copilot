@@ -80,13 +80,15 @@ def main() -> None:
     review_records: list[dict] = []
     for case in cases:
         result = jobcopilot_graph.invoke({"job_text": case["job_text"]})
-        retrieved_records = []
-        for content in result["retrieved_memories"]:
-            record = memory_by_content.get(content)
-            retrieved_records.append(
-                record or {"id": "", "type": "unknown", "content": content}
-            )
+        retrieved_records = result.get("retrieved_memory_records", [])
+        if not retrieved_records:
+            for content in result["retrieved_memories"]:
+                record = memory_by_content.get(content)
+                retrieved_records.append(
+                    record or {"id": "", "type": "unknown", "content": content}
+                )
 
+        proposed_claims = result["email_draft"].get("claim_evidence", [])
         review_records.append(
             {
                 "job_id": case["id"],
@@ -95,12 +97,14 @@ def main() -> None:
                 "email_subject": result["email_draft"]["subject"],
                 "email_body": result["email_draft"]["body"],
                 "retrieved_memories": retrieved_records,
+                "proposed_claims": proposed_claims,
                 "claims": [],
                 "review_status": "pending",
                 "review_instructions": (
-                    "Split the email into factual candidate claims. Label each claim "
-                    "supported, unsupported or ambiguous, and list only retrieved "
-                    "memory IDs as evidence."
+                    "Review every factual candidate claim in the email. Use proposed_claims "
+                    "as a machine-generated starting point, but independently verify claim "
+                    "coverage and evidence. Label each reviewed claim supported, unsupported "
+                    "or ambiguous, and list only retrieved memory IDs as evidence."
                 ),
             }
         )
@@ -114,6 +118,9 @@ def main() -> None:
         json.dumps(
             {
                 "prepared_jobs": len(review_records),
+                "proposed_claims": sum(
+                    len(record["proposed_claims"]) for record in review_records
+                ),
                 "output": str(args.output),
             },
             indent=2,

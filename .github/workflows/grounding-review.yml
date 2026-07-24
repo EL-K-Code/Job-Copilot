@@ -94,15 +94,20 @@ jobs:
               if line.strip()
           ]
           categories = Counter(record.get("category", "unknown") for record in records)
+          proposed_claim_count = sum(
+              len(record.get("proposed_claims", [])) for record in records
+          )
           lines = [
               "# JobCopilot Generated-Email Grounding Review",
               "",
               f"- Review records prepared: {len(records)}",
+              f"- Machine-proposed evidence claims: {proposed_claim_count}",
               "- Candidate profile: fictional public profile",
-              "- Review status: `pending human claim-level annotation`",
+              "- Deterministic generation checks: evidence IDs, verbatim claim presence and unsupported amplifier guard",
+              "- Review status: `pending independent human claim-level annotation`",
               "",
               "This workflow does not calculate an unsupported-claim rate automatically.",
-              "A reviewer must split each email into factual candidate claims, then label each claim as `supported`, `unsupported`, or `ambiguous` using only retrieved memory IDs as evidence.",
+              "The generated `proposed_claims` are an audit aid, not ground-truth labels. A reviewer must independently verify that every factual candidate claim is covered, then label each claim as `supported`, `unsupported`, or `ambiguous` using only retrieved memory IDs as evidence.",
               "",
               "## Category coverage",
           ]
