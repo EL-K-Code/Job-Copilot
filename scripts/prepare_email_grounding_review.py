@@ -9,6 +9,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+from app.evaluation_sampling import select_review_cases
 from app.graph import jobcopilot_graph
 from app.memory import load_profile_memories
 
@@ -55,16 +56,28 @@ def main() -> None:
         "--limit",
         type=int,
         default=10,
-        help="Generate the first N review records. Use zero for the full dataset.",
+        help="Generate N review records. Use zero for the full dataset.",
+    )
+    parser.add_argument(
+        "--sampling",
+        choices=("head", "stratified"),
+        default="stratified",
+        help=(
+            "Use stratified sampling for small runs so different role families are covered, "
+            "or head for the first N dataset rows."
+        ),
     )
     args = parser.parse_args()
 
     if args.limit < 0:
         raise ValueError("--limit cannot be negative.")
 
-    cases = load_jsonl(args.dataset)
-    if args.limit:
-        cases = cases[: args.limit]
+    all_cases = load_jsonl(args.dataset)
+    cases = select_review_cases(
+        all_cases,
+        limit=args.limit,
+        sampling=args.sampling,
+    )
 
     memories = load_profile_memories(args.memories)
     memory_by_content = {
@@ -88,14 +101,23 @@ def main() -> None:
                     record or {"id": "", "type": "unknown", "content": content}
                 )
 
-        proposed_claims = result["email_draft"].get("claim_evidence", [])
+        email_draft = result["email_draft"]
+        proposed_claims = email_draft.get("claim_evidence", [])
+        selected_memory_ids = [
+            memory_id
+            for claim in proposed_claims
+            for memory_id in claim.get("supporting_memory_ids", [])
+        ]
         review_records.append(
             {
                 "job_id": case["id"],
                 "language": case.get("language", "unknown"),
                 "category": case.get("category", "unknown"),
-                "email_subject": result["email_draft"]["subject"],
-                "email_body": result["email_draft"]["body"],
+                "sampling_mode": args.sampling,
+                "email_subject": email_draft["subject"],
+                "email_body": email_draft["body"],
+                "composition_variant": email_draft.get("composition_variant", "direct"),
+                "selected_memory_ids": selected_memory_ids,
                 "retrieved_memories": retrieved_records,
                 "proposed_claims": proposed_claims,
                 "claims": [],
@@ -104,7 +126,8 @@ def main() -> None:
                     "Review every factual candidate claim in the email. Use proposed_claims "
                     "as a machine-generated starting point, but independently verify claim "
                     "coverage and evidence. Label each reviewed claim supported, unsupported "
-                    "or ambiguous, and list only retrieved memory IDs as evidence."
+                    "or ambiguous, and list only retrieved memory IDs as evidence. Also assess "
+                    "whether selected evidence is role-specific rather than merely generic."
                 ),
             }
         )
@@ -118,6 +141,19 @@ def main() -> None:
         json.dumps(
             {
                 "prepared_jobs": len(review_records),
+                "categories": sorted(
+                    {record["category"] for record in review_records}
+                ),
+                "sampling_mode": args.sampling,
+                "composition_variants": sorted(
+                    {record["composition_variant"] for record in review_records}
+                ),
+                "unique_evidence_selections": len(
+                    {
+                        tuple(record["selected_memory_ids"])
+                        for record in review_records
+                    }
+                ),
                 "proposed_claims": sum(
                     len(record["proposed_claims"]) for record in review_records
                 ),
