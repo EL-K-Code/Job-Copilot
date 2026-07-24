@@ -12,6 +12,21 @@ if str(PROJECT_ROOT) not in sys.path:
 from app.evaluation import GROUNDING_LABELS
 
 
+REQUIRED_EXPECTED_FIELDS = {
+    "company",
+    "role",
+    "location",
+    "contract_type",
+    "start_date",
+    "missions_summary",
+    "required_skills",
+    "preferred_skills",
+    "tools_and_stack",
+    "domain_focus",
+    "key_highlights_for_candidate",
+}
+
+
 def load_jsonl(path: Path) -> list[dict]:
     rows: list[dict] = []
     with path.open("r", encoding="utf-8") as file_handle:
@@ -38,36 +53,55 @@ def ensure_unique_ids(rows: list[dict], dataset_name: str) -> None:
         raise ValueError(f"{dataset_name} contains duplicate ids: {duplicates}")
 
 
-def validate_job_offers(rows: list[dict]) -> dict:
-    if len(rows) != 50:
-        raise ValueError(f"Benchmark V1 must contain exactly 50 offers; found {len(rows)}.")
-    ensure_unique_ids(rows, "job offers")
-    required_expected = {
-        "company",
-        "role",
-        "location",
-        "contract_type",
-        "start_date",
-        "missions_summary",
-        "required_skills",
-        "preferred_skills",
-        "tools_and_stack",
-        "domain_focus",
-        "key_highlights_for_candidate",
-    }
+def validate_job_offer_rows(rows: list[dict], dataset_name: str) -> None:
+    ensure_unique_ids(rows, dataset_name)
     for row in rows:
         if not str(row.get("job_text", "")).strip():
             raise ValueError(f"{row['id']} has empty job_text.")
         expected = row.get("expected")
         if not isinstance(expected, dict):
             raise ValueError(f"{row['id']} has no expected annotation object.")
-        missing = required_expected - set(expected)
+        missing = REQUIRED_EXPECTED_FIELDS - set(expected)
         if missing:
             raise ValueError(f"{row['id']} is missing expected fields: {sorted(missing)}")
+
+
+def validate_job_offers(rows: list[dict]) -> dict:
+    if len(rows) != 50:
+        raise ValueError(f"Benchmark V1 must contain exactly 50 offers; found {len(rows)}.")
+    validate_job_offer_rows(rows, "job offers")
     category_counts = Counter(str(row.get("category", "Unknown")) for row in rows)
     if len(category_counts) < 10:
         raise ValueError("Benchmark V1 must cover at least 10 role categories.")
-    return {"count": len(rows), "categories": dict(sorted(category_counts.items()))}
+    return {
+        "count": len(rows),
+        "languages": dict(Counter(str(row.get("language", "unknown")) for row in rows)),
+        "categories": dict(sorted(category_counts.items())),
+    }
+
+
+def validate_smoke_offers(rows: list[dict]) -> dict:
+    if len(rows) != 5:
+        raise ValueError(f"The stratified smoke suite must contain exactly 5 offers; found {len(rows)}.")
+    validate_job_offer_rows(rows, "smoke offers")
+
+    languages = Counter(str(row.get("language", "unknown")) for row in rows)
+    categories = Counter(str(row.get("category", "Unknown")) for row in rows)
+    difficulties = Counter(str(row.get("difficulty", "unknown")) for row in rows)
+
+    if set(languages) != {"en", "fr"}:
+        raise ValueError("The smoke suite must contain both English and French cases.")
+    if len(categories) != 5:
+        raise ValueError("The smoke suite must cover five distinct role categories.")
+    if set(difficulties) != {"easy", "medium", "hard"}:
+        raise ValueError("The smoke suite must cover easy, medium and hard cases.")
+
+    return {
+        "count": len(rows),
+        "languages": dict(languages),
+        "categories": dict(sorted(categories.items())),
+        "difficulties": dict(difficulties),
+    }
 
 
 def validate_retrieval(rows: list[dict], memory_ids: set[str]) -> dict:
@@ -118,6 +152,9 @@ def main() -> None:
 
     report = {
         "job_offers": validate_job_offers(load_jsonl(evaluation_dir / "job_offers.v1.jsonl")),
+        "smoke_offers": validate_smoke_offers(
+            load_jsonl(evaluation_dir / "job_offers.smoke.v1.jsonl")
+        ),
         "retrieval": validate_retrieval(
             load_jsonl(evaluation_dir / "retrieval_cases.v1.jsonl"), memory_ids
         ),
