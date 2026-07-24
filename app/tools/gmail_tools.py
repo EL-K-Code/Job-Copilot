@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 from email.message import EmailMessage
+from email.utils import getaddresses
 from typing import Any
 
 from google.auth.transport.requests import Request
@@ -73,6 +74,32 @@ def build_gmail_service(interactive: bool = False):
     return build("gmail", "v1", credentials=creds)
 
 
+def _validate_header_value(name: str, value: str) -> str:
+    normalized = value.strip()
+    if not normalized:
+        raise ValueError(f"{name} cannot be empty.")
+    if "\r" in normalized or "\n" in normalized:
+        raise ValueError(f"{name} cannot contain newline characters.")
+    return normalized
+
+
+def _validate_address_list(name: str, value: str | None) -> str | None:
+    if value is None:
+        return None
+
+    normalized = _validate_header_value(name, value)
+    parsed_addresses = getaddresses([normalized])
+    if not parsed_addresses:
+        raise ValueError(f"{name} must contain at least one valid email address.")
+
+    for _display_name, address in parsed_addresses:
+        local_part, separator, domain = address.rpartition("@")
+        if not separator or not local_part or "." not in domain:
+            raise ValueError(f"Invalid email address in {name}: {address or value}")
+
+    return normalized
+
+
 def _build_raw_email(
     to: str,
     subject: str,
@@ -80,20 +107,28 @@ def _build_raw_email(
     cc: str | None = None,
     bcc: str | None = None,
 ) -> str:
+    validated_to = _validate_address_list("to", to)
+    validated_cc = _validate_address_list("cc", cc)
+    validated_bcc = _validate_address_list("bcc", bcc)
+    validated_subject = _validate_header_value("subject", subject)
+    validated_body = body.strip()
+
+    if not validated_body:
+        raise ValueError("body cannot be empty.")
+
     message = EmailMessage()
-    message["To"] = to
-    message["Subject"] = subject
+    message["To"] = validated_to
+    message["Subject"] = validated_subject
 
-    if cc:
-        message["Cc"] = cc
-    if bcc:
-        message["Bcc"] = bcc
+    if validated_cc:
+        message["Cc"] = validated_cc
+    if validated_bcc:
+        message["Bcc"] = validated_bcc
 
-    message.set_content(body)
+    message.set_content(validated_body)
 
     raw_bytes = message.as_bytes()
-    raw_b64 = base64.urlsafe_b64encode(raw_bytes).decode("utf-8")
-    return raw_b64
+    return base64.urlsafe_b64encode(raw_bytes).decode("utf-8")
 
 
 def create_gmail_draft(
@@ -103,8 +138,6 @@ def create_gmail_draft(
     cc: str | None = None,
     bcc: str | None = None,
 ) -> dict[str, Any]:
-    service = build_gmail_service(interactive=False)
-
     raw_message = _build_raw_email(
         to=to,
         subject=subject,
@@ -112,6 +145,7 @@ def create_gmail_draft(
         cc=cc,
         bcc=bcc,
     )
+    service = build_gmail_service(interactive=False)
 
     draft_body = {
         "message": {
