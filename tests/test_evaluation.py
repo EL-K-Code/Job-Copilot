@@ -22,11 +22,13 @@ def test_acronyms_and_expanded_forms_are_equivalent():
             "Natural Language Processing (NLP)",
             "RAG (Retrieval-Augmented Generation)",
             "Large Language Model evaluation",
+            "Computer Vision (CV)",
         ],
         expected=[
             "natural language processing",
             "RAG",
             "LLM evaluation",
+            "computer vision",
         ],
     )
 
