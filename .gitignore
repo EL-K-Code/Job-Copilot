@@ -28,8 +28,9 @@ data/faiss_index/
 *.faiss
 *.pkl
 
-# Local generated data
+# Local generated and private data
 data/applications.json
+data/profile_memories.json
 evaluation/results/
 
 # OS / editor files
