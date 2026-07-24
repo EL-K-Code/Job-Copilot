@@ -31,12 +31,12 @@ In the GitHub repository:
 4. choose either `5` or `50`;
 5. start the workflow.
 
-The options now mean:
+The options mean:
 
 - `5`: run the dedicated bilingual stratified smoke suite, covering five categories and easy, medium and hard cases;
 - `50`: run the full synthetic Benchmark V1 dataset.
 
-The five-case option no longer evaluates the first five rows of the full dataset.
+The five-case option does not evaluate the first five rows of the full dataset.
 
 The workflow:
 
@@ -44,10 +44,18 @@ The workflow:
 - installs the project dependencies;
 - validates both benchmark datasets;
 - runs the selected extraction suite;
-- publishes aggregate metrics in the Actions run summary;
+- publishes protocol 1.2 metrics in the Actions run summary;
 - uploads the complete JSON report as an artifact retained for 30 days.
 
-The summary explicitly reports the selected dataset and evaluation-protocol version. Macro list F1 covers only direct extraction fields; `key_highlights_for_candidate` is excluded because it is a generated recommendation field.
+## Metrics shown in the summary
+
+- normalized scalar accuracy;
+- strict scalar accuracy;
+- closed-label list F1 for skills, tools and domains;
+- exact mission-summary F1 as a diagnostic;
+- selected dataset and evaluation-protocol version.
+
+Contract type is scored through a broad normalized category for the primary scalar metric, while strict wording remains visible separately. Mission summaries are excluded from closed-label macro F1 because faithful paraphrases may differ lexically. `key_highlights_for_candidate` is excluded because it is a generated recommendation field.
 
 The artifact is named using the run number and selected case count, for example:
 
@@ -57,4 +65,4 @@ jobcopilot-benchmark-12-5-cases
 
 ## Recommended sequence
 
-Run the new five-case stratified suite first. Review the contract-type behavior, French extraction and field-level metrics before launching all 50 cases.
+Run the five-case stratified suite first. Review contract behavior, French extraction, strict-versus-normalized differences and mission-summary diagnostics before launching all 50 cases.
