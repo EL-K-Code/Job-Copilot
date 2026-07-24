@@ -90,12 +90,24 @@ File: `.github/workflows/grounding-review.yml`
 
 Choose `5`, `10` or `50` generated emails. The workflow uses the fictional public profile, runs the complete JobCopilot pipeline and creates a JSONL annotation template.
 
+Small runs are selected through deterministic category-stratified sampling rather than taking the first dataset rows. This prevents a five-case review from containing five near-duplicate offers from one role family. The 50-case option still evaluates the complete frozen dataset.
+
+For each offer, the pipeline:
+
+1. retrieves profile memories with FAISS;
+2. scores the retrieved memories against explicit required skills, tools, domains, role terms and missions;
+3. asks the LLM to select only one to three retrieved memory IDs;
+4. constructs every candidate claim deterministically from the selected memory text;
+5. varies only safe non-factual opening and closing templates;
+6. exports relevance scores, aligned offer terms, selected memory IDs and the complete claim ledger.
+
 The output is deliberately **not scored automatically**. A human reviewer must:
 
-1. split each email into factual candidate claims;
+1. verify every factual candidate claim against its cited memory;
 2. label every claim `supported`, `unsupported` or `ambiguous`;
-3. reference only retrieved memory IDs as evidence;
-4. leave unsupported claims without evidence IDs.
+3. confirm that no candidate claim exists outside the ledger;
+4. assess whether the selected evidence is genuinely specific to the role rather than merely generic;
+5. reference only retrieved memory IDs as evidence.
 
 After annotation, run:
 
@@ -107,7 +119,7 @@ python scripts/summarize_email_grounding_review.py \
 Example artifact:
 
 ```text
-jobcopilot-grounding-review-2-10-cases
+jobcopilot-grounding-review-5-10-cases
 ```
 
 ## Recommended sequence
@@ -115,6 +127,7 @@ jobcopilot-grounding-review-2-10-cases
 1. run the five-case extraction smoke suite;
 2. run the full 50-case extraction benchmark;
 3. run the 20-case retrieval benchmark;
-4. prepare five generated emails for grounding review;
-5. audit the annotation protocol before expanding to ten or fifty emails;
-6. keep Benchmark V2 work separate from frozen V1 results.
+4. prepare five stratified generated emails for grounding and personalization review;
+5. audit support, ledger coverage and role-specific evidence selection;
+6. expand to ten role families before considering a full 50-email review;
+7. keep Benchmark V2 work separate from frozen V1 results.
