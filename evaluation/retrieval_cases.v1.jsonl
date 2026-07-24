@@ -1,0 +1,20 @@
+{"id": "jc-ret-001", "query": "Agentic AI engineer LangGraph tool calling structured outputs", "relevant_ids": ["project_1", "skill_2"], "relevance_by_id": {"project_1": 3, "skill_2": 2}}
+{"id": "jc-ret-002", "query": "RAG retrieval FAISS sentence embeddings relevance evaluation", "relevant_ids": ["project_2", "skill_2"], "relevance_by_id": {"project_2": 3, "skill_2": 2}}
+{"id": "jc-ret-003", "query": "FastAPI Docker model serving deployment", "relevant_ids": ["project_3", "skill_1"], "relevance_by_id": {"project_3": 3, "skill_1": 2}}
+{"id": "jc-ret-004", "query": "Machine learning evaluation ROC-AUC thresholds error analysis", "relevant_ids": ["experience_1", "skill_2"], "relevance_by_id": {"experience_1": 3, "skill_2": 1}}
+{"id": "jc-ret-005", "query": "Operational data cleaning exploratory analysis statistical modeling", "relevant_ids": ["experience_2", "education_1"], "relevance_by_id": {"experience_2": 3, "education_1": 1}}
+{"id": "jc-ret-006", "query": "Python SQL scikit-learn Git technical stack", "relevant_ids": ["skill_1"], "relevance_by_id": {"skill_1": 3}}
+{"id": "jc-ret-007", "query": "Reliable applied AI early-career profile", "relevant_ids": ["identity_1"], "relevance_by_id": {"identity_1": 3}}
+{"id": "jc-ret-008", "query": "Data science statistics software engineering education", "relevant_ids": ["education_1"], "relevance_by_id": {"education_1": 3}}
+{"id": "jc-ret-009", "query": "Human supervised AI tools and explicit approval", "relevant_ids": ["project_1", "preference_1"], "relevance_by_id": {"project_1": 3, "preference_1": 2}}
+{"id": "jc-ret-010", "query": "Concise evidence grounded application email", "relevant_ids": ["preference_1"], "relevance_by_id": {"preference_1": 3}}
+{"id": "jc-ret-011", "query": "NLP LLM APIs and retrieval augmented generation", "relevant_ids": ["skill_2", "project_2"], "relevance_by_id": {"skill_2": 3, "project_2": 2}}
+{"id": "jc-ret-012", "query": "Containerized API for machine learning predictions", "relevant_ids": ["project_3", "skill_1"], "relevance_by_id": {"project_3": 3, "skill_1": 2}}
+{"id": "jc-ret-013", "query": "Model reliability evaluation and threshold optimization", "relevant_ids": ["experience_1"], "relevance_by_id": {"experience_1": 3}}
+{"id": "jc-ret-014", "query": "FAISS semantic search prototype", "relevant_ids": ["project_2"], "relevance_by_id": {"project_2": 3}}
+{"id": "jc-ret-015", "query": "LangGraph application workflow", "relevant_ids": ["project_1"], "relevance_by_id": {"project_1": 3}}
+{"id": "jc-ret-016", "query": "Data pipeline experience", "relevant_ids": ["skill_2", "experience_2"], "relevance_by_id": {"skill_2": 3, "experience_2": 2}}
+{"id": "jc-ret-017", "query": "PyTorch machine learning engineer", "relevant_ids": ["skill_1", "identity_1"], "relevance_by_id": {"skill_1": 3, "identity_1": 1}}
+{"id": "jc-ret-018", "query": "Structured error review on a matching system", "relevant_ids": ["experience_1"], "relevance_by_id": {"experience_1": 3}}
+{"id": "jc-ret-019", "query": "Statistical analysis on real operational datasets", "relevant_ids": ["experience_2", "education_1"], "relevance_by_id": {"experience_2": 3, "education_1": 2}}
+{"id": "jc-ret-020", "query": "Evidence-only professional communication", "relevant_ids": ["preference_1", "project_1"], "relevance_by_id": {"preference_1": 3, "project_1": 1}}
