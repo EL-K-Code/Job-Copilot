@@ -103,7 +103,7 @@ def test_selection_rejects_generic_memory_when_aligned_evidence_exists():
     ranked = rank_memory_records_for_job(job, MEMORIES)
     selection = EmailEvidenceSelection(selected_memory_ids=["identity_1"])
 
-    with pytest.raises(ValueError, match="ignored all memories"):
+    with pytest.raises(ValueError, match="Select fewer claims"):
         validate_memory_selection(selection, ranked)
 
 
