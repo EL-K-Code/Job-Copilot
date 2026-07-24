@@ -14,8 +14,11 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from app.config import settings
-from app.evaluation import evaluate_job_analysis
+from app.evaluation import SCORED_LIST_FIELDS, SCALAR_FIELDS, evaluate_job_analysis
 from app.services.llm import analyze_job_offer
+
+
+EVALUATION_PROTOCOL_VERSION = "1.1.0"
 
 
 def load_cases(path: Path) -> list[dict]:
@@ -39,6 +42,25 @@ def sha256_file(path: Path) -> str:
 
 
 def summarize_results(case_results: list[dict]) -> dict:
+    scalar_by_field = {
+        field: mean(
+            item["metrics"]["scalar_fields"][field]
+            for item in case_results
+            if field in item["metrics"]["scalar_fields"]
+        )
+        for field in SCALAR_FIELDS
+        if any(field in item["metrics"]["scalar_fields"] for item in case_results)
+    }
+    list_f1_by_field = {
+        field: mean(
+            item["metrics"]["list_fields"][field]["f1"]
+            for item in case_results
+            if field in item["metrics"]["list_fields"]
+        )
+        for field in SCORED_LIST_FIELDS
+        if any(field in item["metrics"]["list_fields"] for item in case_results)
+    }
+
     return {
         "number_of_cases": len(case_results),
         "mean_scalar_accuracy": (
@@ -51,6 +73,8 @@ def summarize_results(case_results: list[dict]) -> dict:
             if case_results
             else 0.0
         ),
+        "scalar_accuracy_by_field": scalar_by_field,
+        "list_f1_by_field": list_f1_by_field,
     }
 
 
@@ -111,6 +135,11 @@ def main() -> None:
         default=0,
         help="Evaluate only the first N cases. Zero means the full dataset.",
     )
+    parser.add_argument(
+        "--benchmark-version",
+        default="1.0.0",
+        help="Version label for the selected dataset.",
+    )
     args = parser.parse_args()
 
     if args.limit < 0:
@@ -123,12 +152,19 @@ def main() -> None:
     evaluation = run_evaluation(cases)
     report = {
         "task": "structured_job_offer_extraction",
-        "benchmark_version": "1.0.0",
+        "benchmark_version": args.benchmark_version,
+        "evaluation_protocol_version": EVALUATION_PROTOCOL_VERSION,
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "model": settings.anthropic_model,
         "dataset": str(args.dataset),
         "dataset_sha256": sha256_file(args.dataset),
         "prompt_sha256": sha256_file(PROJECT_ROOT / "app" / "prompts.py"),
+        "metric_definition": {
+            "scored_scalar_fields": list(SCALAR_FIELDS),
+            "scored_list_fields": list(SCORED_LIST_FIELDS),
+            "unscored_generated_fields": ["key_highlights_for_candidate"],
+            "acronym_normalization": True,
+        },
         **evaluation,
     }
 
@@ -142,6 +178,7 @@ def main() -> None:
         json.dumps(
             {
                 "benchmark_version": report["benchmark_version"],
+                "evaluation_protocol_version": report["evaluation_protocol_version"],
                 "model": report["model"],
                 **report["aggregate"],
                 "output": str(args.output),

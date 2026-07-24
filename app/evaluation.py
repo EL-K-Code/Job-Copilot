@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import math
+import re
+import unicodedata
 from collections import Counter
 from typing import Any, Iterable
 
@@ -15,27 +17,69 @@ SCALAR_FIELDS = (
     "start_date",
 )
 
-LIST_FIELDS = (
+SCORED_LIST_FIELDS = (
     "missions_summary",
     "required_skills",
     "preferred_skills",
     "tools_and_stack",
     "domain_focus",
-    "key_highlights_for_candidate",
 )
 
+UNSCORED_LIST_FIELDS = ("key_highlights_for_candidate",)
+LIST_FIELDS = SCORED_LIST_FIELDS
 GROUNDING_LABELS = ("supported", "unsupported", "ambiguous")
+
+EVALUATION_ALIASES = {
+    "natural language processing": "nlp",
+    "retrieval augmented generation": "rag",
+    "large language models": "llm",
+    "large language model": "llm",
+    "llms": "llm",
+    "application programming interfaces": "api",
+    "application programming interface": "api",
+    "apis": "api",
+    "machine learning": "ml",
+    "deep learning": "dl",
+    "computer vision": "cv",
+    "artificial intelligence": "ai",
+    "sentence berts": "sbert",
+    "sentence bert": "sbert",
+    "continuous integration continuous deployment": "cicd",
+    "ci cd": "cicd",
+}
 
 
 def normalize_text(value: str) -> str:
     return " ".join(value.strip().casefold().split())
 
 
-def normalize_items(values: list[str]) -> set[str]:
+def normalize_evaluation_item(value: str) -> str:
+    """Normalize punctuation and replace documented expansions with acronyms."""
+    text = unicodedata.normalize("NFKC", str(value)).casefold()
+    text = text.replace("&", " and ")
+    text = re.sub(r"[-/()]", " ", text)
+    text = re.sub(r"[^\w+#.]+", " ", text)
+    text = " ".join(text.split())
+
+    for alias in sorted(EVALUATION_ALIASES, key=len, reverse=True):
+        canonical = EVALUATION_ALIASES[alias]
+        text = re.sub(rf"(?<!\w){re.escape(alias)}(?!\w)", canonical, text)
+
+    # Expanded and abbreviated forms often appear together, for example
+    # "natural language processing (NLP)" -> "nlp nlp". Remove duplicate
+    # tokens while preserving the rest of the phrase, such as "llm evaluation".
+    tokens: list[str] = []
+    for token in text.split():
+        if not tokens or token != tokens[-1]:
+            tokens.append(token)
+    return " ".join(tokens)
+
+
+def normalize_items(values: Iterable[str]) -> set[str]:
     return {
         normalized
         for value in values
-        if (normalized := normalize_text(str(value)))
+        if (normalized := normalize_evaluation_item(str(value)))
     }
 
 
@@ -90,13 +134,23 @@ def evaluate_job_analysis(
         )
 
     list_scores: dict[str, dict[str, float]] = {}
-    for field in LIST_FIELDS:
+    for field in SCORED_LIST_FIELDS:
         if field not in expected:
             continue
         list_scores[field] = set_precision_recall_f1(
             list(predicted_data.get(field, [])),
             list(expected[field]),
         )
+
+    unscored_fields = {
+        field: {
+            "prediction": list(predicted_data.get(field, [])),
+            "expected_reference": list(expected.get(field, [])),
+            "reason": "Generated recommendation field; excluded from extraction F1.",
+        }
+        for field in UNSCORED_LIST_FIELDS
+        if field in predicted_data or field in expected
+    }
 
     scalar_accuracy = (
         sum(scalar_scores.values()) / len(scalar_scores)
@@ -112,8 +166,10 @@ def evaluate_job_analysis(
     return {
         "scalar_accuracy": scalar_accuracy,
         "macro_list_f1": macro_list_f1,
+        "scored_list_fields": list(SCORED_LIST_FIELDS),
         "scalar_fields": scalar_scores,
         "list_fields": list_scores,
+        "unscored_fields": unscored_fields,
     }
 
 
