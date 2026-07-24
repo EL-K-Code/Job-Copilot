@@ -141,8 +141,10 @@ def generate_application_email_draft(
         repair_message = HumanMessage(
             content=(
                 "The previous draft failed deterministic grounding validation. Regenerate "
-                "a more conservative email. Every claim_evidence claim must appear verbatim "
-                "in the body and use only directly supporting retrieved memory IDs.\n\n"
+                "a more conservative email. Every claim_evidence claim must be clearly and "
+                "locally represented in one body sentence, using the same material facts and "
+                "only directly supporting retrieved memory IDs. Harmless grammatical "
+                "rephrasing is allowed; stronger scope, ownership or proficiency is not.\n\n"
                 f"Validation error: {first_error}\n\n"
                 "Previous draft:\n"
                 f"{json.dumps(result.model_dump(), indent=2)}"

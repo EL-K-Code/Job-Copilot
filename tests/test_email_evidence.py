@@ -74,7 +74,7 @@ def test_risky_wording_is_allowed_only_when_present_in_evidence():
     validate_claim_evidence(claims, memories)
 
 
-def test_claim_evidence_must_appear_in_email_body():
+def test_disconnected_claim_evidence_is_rejected():
     draft = EmailDraft(
         subject="Application",
         body="I built an agentic workflow with LangGraph.",
@@ -86,8 +86,49 @@ def test_claim_evidence_must_appear_in_email_body():
         ],
     )
 
-    with pytest.raises(ValueError, match="appear verbatim"):
+    with pytest.raises(ValueError, match="not sufficiently represented"):
         validate_grounded_email_draft(draft, MEMORIES)
+
+
+def test_harmless_claim_paraphrase_is_accepted():
+    draft = EmailDraft(
+        subject="Application",
+        body=(
+            "Dear Hiring Team,\n\n"
+            "My technical toolkit includes Python and FastAPI.\n\n"
+            "Kind regards"
+        ),
+        claim_evidence=[
+            EvidenceBackedClaim(
+                claim="I work with Python and FastAPI.",
+                supporting_memory_ids=["skill_1"],
+            )
+        ],
+    )
+
+    validate_grounded_email_draft(draft, MEMORIES)
+
+
+def test_acronym_and_expanded_form_linkage_is_accepted():
+    memories = [
+        {
+            "id": "skill_2",
+            "type": "skill",
+            "content": "The candidate has practical experience with RAG systems.",
+        }
+    ]
+    draft = EmailDraft(
+        subject="Application",
+        body="I have practical experience with retrieval-augmented generation systems.",
+        claim_evidence=[
+            EvidenceBackedClaim(
+                claim="I have practical experience with RAG systems.",
+                supporting_memory_ids=["skill_2"],
+            )
+        ],
+    )
+
+    validate_grounded_email_draft(draft, memories)
 
 
 def test_valid_grounded_email_passes():
