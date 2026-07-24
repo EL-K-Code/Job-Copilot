@@ -4,7 +4,7 @@ from app.email_composer import (
 )
 
 
-def test_fallback_uses_all_aligned_memories_before_generic_type_diversity():
+def test_fallback_uses_all_aligned_memories_before_type_diversity():
     ranked_records = [
         {
             "id": "project_1",
@@ -38,7 +38,7 @@ def test_fallback_uses_all_aligned_memories_before_generic_type_diversity():
     validate_memory_selection(selection, ranked_records)
 
 
-def test_fallback_may_fill_with_generic_only_when_aligned_evidence_is_insufficient():
+def test_fallback_returns_shorter_selection_when_aligned_evidence_is_limited():
     ranked_records = [
         {
             "id": "project_1",
@@ -62,6 +62,5 @@ def test_fallback_may_fill_with_generic_only_when_aligned_evidence_is_insufficie
 
     selection = deterministic_fallback_selection(ranked_records, limit=3)
 
-    assert selection.selected_memory_ids[:2] == ["project_1", "skill_1"]
-    assert selection.selected_memory_ids[2] == "identity_1"
+    assert selection.selected_memory_ids == ["project_1", "skill_1"]
     validate_memory_selection(selection, ranked_records)
