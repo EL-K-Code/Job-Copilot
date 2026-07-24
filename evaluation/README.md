@@ -15,6 +15,24 @@ Protocol 1.2 makes four distinct measurements explicit instead of collapsing the
 
 The evaluator also normalizes documented acronym and expanded-form equivalents such as NLP / natural language processing and RAG / retrieval-augmented generation. Semantic modifiers remain distinct: `LLM evaluation` is different from `LLM deployment`, and `responsible AI` is different from `agentic AI`.
 
+## Published extraction result
+
+The controlled 50-offer V1 run is published in:
+
+- [`EXTRACTION_RESULTS_V1.md`](EXTRACTION_RESULTS_V1.md): human-readable methodology, results, deviations and limitations;
+- [`published/extraction_v1_summary.json`](published/extraction_v1_summary.json): compact machine-readable record with hashes and aggregate metrics.
+
+Headline result on the frozen synthetic English suite:
+
+| Metric | Score |
+| --- | ---: |
+| Normalized scalar accuracy | 1.0000 |
+| Strict scalar accuracy | 1.0000 |
+| Closed-label list macro F1 | 0.9980 |
+| Mission-summary exact F1 | 1.0000 |
+
+These scores are regression-test evidence on a strongly templated synthetic suite, not production-level job-market accuracy.
+
 ## Available suites
 
 ### Stratified smoke suite
@@ -108,11 +126,15 @@ The extraction prompt treats the role title and contract type as separate eviden
 
 `retrieval_cases.v1.jsonl` contains 20 profile-memory relevance judgments.
 
+Run locally:
+
 ```bash
 python scripts/evaluate_retrieval.py \
   --dataset evaluation/retrieval_cases.v1.jsonl \
   --output evaluation/results/retrieval_report.json
 ```
+
+Or run the manual **JobCopilot Retrieval Benchmark** GitHub Actions workflow. It uses the fictional public profile, requires no Anthropic secret and uploads the full ranked report.
 
 Reported metrics:
 
@@ -150,7 +172,9 @@ Generate JobCopilot outputs and prepare them for human review:
 python scripts/prepare_email_grounding_review.py --limit 10
 ```
 
-Use `--limit 0` for all 50 offers. Reviewers split each email into factual candidate claims and assign:
+The manual **JobCopilot Grounding Review Preparation** workflow can prepare 5, 10 or 50 records using only the fictional public profile.
+
+Reviewers split each email into factual candidate claims and assign:
 
 - `supported`;
 - `unsupported`;
@@ -164,6 +188,22 @@ After annotation:
 python scripts/summarize_email_grounding_review.py \
   --annotations evaluation/results/email_grounding_review.jsonl
 ```
+
+The unsupported-claim rate is not produced until human claim segmentation and labeling are complete.
+
+## Benchmark V2
+
+[`BENCHMARK_V2_PLAN.md`](BENCHMARK_V2_PLAN.md) defines the next generalization suite: 100 English and French offers, broader formats, challenge metadata, evidence spans, double annotation, adjudication, cost and latency tracking, and repeated-run stability.
+
+V1 remains frozen for regression testing. V2 results must be reported separately.
+
+## GitHub Actions
+
+See [`GITHUB_ACTIONS.md`](GITHUB_ACTIONS.md) for the three manual workflows:
+
+1. structured extraction;
+2. profile-memory retrieval;
+3. generated-email grounding review preparation.
 
 ## Integrity validation
 

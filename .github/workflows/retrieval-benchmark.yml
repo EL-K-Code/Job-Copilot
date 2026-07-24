@@ -1,0 +1,92 @@
+name: JobCopilot Retrieval Benchmark
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: jobcopilot-retrieval-benchmark
+  cancel-in-progress: false
+
+jobs:
+  retrieval-benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    env:
+      PROFILE_MEMORIES_FILE: data/profile_memories.example.json
+      ALLOW_TRUSTED_FAISS_DESERIALIZATION: "false"
+      PYTHONUNBUFFERED: "1"
+      TOKENIZERS_PARALLELISM: "false"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Cache Hugging Face models
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: ${{ runner.os }}-huggingface-all-MiniLM-L6-v2-v1
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Validate benchmark integrity
+        run: python scripts/validate_benchmark.py
+
+      - name: Run retrieval benchmark
+        run: |
+          python scripts/evaluate_retrieval.py \
+            --dataset evaluation/retrieval_cases.v1.jsonl \
+            --output evaluation/results/retrieval_report.json \
+            --k 5
+
+      - name: Publish run summary
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          report = json.loads(
+              Path("evaluation/results/retrieval_report.json").read_text(encoding="utf-8")
+          )
+          aggregate = report.get("aggregate", {})
+          lines = [
+              "# JobCopilot Retrieval Benchmark",
+              "",
+              f"- Cases evaluated: {report.get('number_of_cases', 0)}",
+              "- Embedding model: `sentence-transformers/all-MiniLM-L6-v2`",
+              f"- MRR: {aggregate.get('mrr', 0.0):.4f}",
+              f"- Recall@1: {aggregate.get('recall@1', 0.0):.4f}",
+              f"- Recall@3: {aggregate.get('recall@3', 0.0):.4f}",
+              f"- Recall@5: {aggregate.get('recall@5', 0.0):.4f}",
+              f"- NDCG@1: {aggregate.get('ndcg@1', 0.0):.4f}",
+              f"- NDCG@3: {aggregate.get('ndcg@3', 0.0):.4f}",
+              f"- NDCG@5: {aggregate.get('ndcg@5', 0.0):.4f}",
+              "",
+              "This workflow uses the fictional public profile only and requires no Anthropic secret.",
+              "The complete ranked case-level report is available in the workflow artifact.",
+          ]
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as handle:
+              handle.write("\n".join(lines) + "\n")
+          PY
+
+      - name: Upload retrieval report
+        uses: actions/upload-artifact@v4
+        with:
+          name: jobcopilot-retrieval-${{ github.run_number }}
+          path: evaluation/results/retrieval_report.json
+          if-no-files-found: error
+          retention-days: 30
