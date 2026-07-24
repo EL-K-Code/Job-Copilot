@@ -11,13 +11,18 @@ from app.services.llm import (
 from app.state import JobCopilotState
 
 
+_EMAIL_RETRIEVAL_K = 8
+
+
 def analyze_job_node(state: JobCopilotState) -> JobCopilotState:
     job_text = state["job_text"]
     job_analysis = analyze_job_offer(job_text)
 
     retrieval_query = (
         f"{job_analysis.role}. "
+        f"Missions: {', '.join(job_analysis.missions_summary)}. "
         f"Required skills: {', '.join(job_analysis.required_skills)}. "
+        f"Preferred skills: {', '.join(job_analysis.preferred_skills)}. "
         f"Tools and stack: {', '.join(job_analysis.tools_and_stack)}. "
         f"Domain focus: {', '.join(job_analysis.domain_focus)}."
     )
@@ -30,7 +35,7 @@ def analyze_job_node(state: JobCopilotState) -> JobCopilotState:
 
 def retrieve_memory_node(state: JobCopilotState) -> JobCopilotState:
     query = state["retrieval_query"]
-    docs = retrieve_profile_context(query, k=5)
+    docs = retrieve_profile_context(query, k=_EMAIL_RETRIEVAL_K)
     retrieved_memory_records = [
         {
             "id": str(doc.metadata.get("id", "")).strip(),
