@@ -40,7 +40,7 @@ EVALUATION_ALIASES = {
     "apis": "api",
     "machine learning": "ml",
     "deep learning": "dl",
-    "cv": "computer vision",
+    "computer vision": "cv",
     "artificial intelligence": "ai",
     "sentence berts": "sbert",
     "sentence bert": "sbert",
