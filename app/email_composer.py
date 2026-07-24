@@ -164,7 +164,7 @@ def compose_grounded_email_draft(
 
     body = (
         "Dear Hiring Team,\n\n"
-        f"I am writing to apply for the {role} position at {company}.\n\n"
+        f"I am writing to apply for the {role} at {company}.\n\n"
         f"{evidence_paragraph}\n\n"
         f"{closing}\n\n"
         "Kind regards,\n"
