@@ -57,6 +57,35 @@ class JobAnalysis(BaseModel):
     )
 
 
+class EvidenceBackedClaim(BaseModel):
+    claim: str = Field(
+        description=(
+            "A conservative factual candidate claim that can be copied into the email "
+            "without adding strength, ownership, scale, recency, or production context."
+        )
+    )
+    supporting_memory_ids: list[str] = Field(
+        min_length=1,
+        description="IDs of retrieved profile memories that directly support the claim.",
+    )
+
+    @field_validator("claim")
+    @classmethod
+    def validate_claim(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("Evidence-backed claim text cannot be empty.")
+        return normalized
+
+    @field_validator("supporting_memory_ids")
+    @classmethod
+    def validate_supporting_memory_ids(cls, value: list[str]) -> list[str]:
+        normalized = list(dict.fromkeys(item.strip() for item in value if item.strip()))
+        if not normalized:
+            raise ValueError("Evidence-backed claims require at least one memory ID.")
+        return normalized
+
+
 class MatchInsight(BaseModel):
     strengths: list[str] = Field(
         default_factory=list,
@@ -74,6 +103,13 @@ class MatchInsight(BaseModel):
         default_factory=list,
         description="Relevant memories retrieved from the candidate profile.",
     )
+    supported_claims: list[EvidenceBackedClaim] = Field(
+        default_factory=list,
+        description=(
+            "Candidate claims that are directly supported by identified retrieved memories. "
+            "These claims form the factual evidence plan for email generation."
+        ),
+    )
 
 
 class EmailDraft(BaseModel):
@@ -88,6 +124,13 @@ class EmailDraft(BaseModel):
     tone: Literal["professional", "warm", "concise", "premium"] = Field(
         default="professional",
         description="Tone used in the email.",
+    )
+    claim_evidence: list[EvidenceBackedClaim] = Field(
+        default_factory=list,
+        description=(
+            "Audit ledger for every factual candidate claim used in the email. Each claim "
+            "must appear verbatim in the body and reference retrieved memory IDs."
+        ),
     )
 
     @field_validator("subject")
