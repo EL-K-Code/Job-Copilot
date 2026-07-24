@@ -1,151 +1,224 @@
+<div align="center">
+
 # JobCopilot
 
-**JobCopilot** is an AI-powered job application copilot that helps a candidate go from a raw job description to concrete application actions.
+### An agentic AI workflow for evidence-grounded job applications
 
-It can:
+JobCopilot turns a raw job description into a structured, reviewable application workflow: offer analysis, semantic profile retrieval, candidate-to-role matching, tailored email drafting, application tracking and follow-up actions.
 
-- analyze a job offer into a structured representation,
-- retrieve the most relevant profile memories using semantic search,
-- generate a structured profile-to-job match insight,
-- draft a tailored application email,
-- save application records locally,
-- create a **Gmail draft**,
-- create a **Google Calendar follow-up reminder**,
-- and expose both a classic workflow UI and a first **LangGraph agent** interface.
+![Python](https://img.shields.io/badge/Python-3.11+-3776AB?logo=python&logoColor=white)
+![LangGraph](https://img.shields.io/badge/LangGraph-Agent%20Orchestration-1C3C3C)
+![Streamlit](https://img.shields.io/badge/Streamlit-Interactive%20UI-FF4B4B?logo=streamlit&logoColor=white)
+![Status](https://img.shields.io/badge/Status-Working%20Local%20MVP-2E8B57)
+
+</div>
 
 ---
 
-## Why this project
+## Why this project exists
 
-Job applications are repetitive, time-consuming, and often poorly contextualized.
+Job applications are often repetitive, fragmented and poorly grounded in the candidate's actual experience.
 
-JobCopilot was built to automate the most useful parts of the workflow while keeping the user in control:
+JobCopilot explores a more reliable workflow:
 
-1. understand the offer,
-2. retrieve the right profile evidence,
-3. write a relevant application email,
-4. save the application,
-5. prepare concrete actions such as drafting the email in Gmail and scheduling a follow-up reminder.
+1. extract the real requirements of an offer;
+2. retrieve only the most relevant candidate evidence;
+3. identify strengths and gaps explicitly;
+4. draft an application from that evidence;
+5. keep the human in control before external actions;
+6. save the application and prepare a follow-up.
 
----
-
-## Current scope
-
-This repository contains a **working MVP** with:
-
-- structured job analysis,
-- semantic long-term profile memory with embeddings + FAISS,
-- profile-to-job matching,
-- email draft generation,
-- local persistence of applications,
-- Gmail draft creation,
-- Google Calendar follow-up creation,
-- Streamlit interface,
-- LangGraph workflow orchestration,
-- first LangGraph agent with tools.
+The objective is not to automate indiscriminate mass applications. It is to build a **traceable and supervised AI assistant** that helps a candidate apply more consistently and with better evidence.
 
 ---
 
-## Tech stack
+## Recruiter quick scan
 
-- **Python**
-- **Streamlit**
-- **LangChain**
-- **LangGraph**
-- **Anthropic / Claude**
-- **FAISS**
-- **Hugging Face Embeddings**
-- **Pydantic**
-- **Gmail API**
-- **Google Calendar API**
+| Capability | Implementation |
+| --- | --- |
+| Structured job understanding | LLM extraction validated with Pydantic schemas |
+| Candidate memory | Hugging Face embeddings and FAISS semantic retrieval |
+| Candidate-to-role analysis | Explicit strengths, gaps and positioning angles |
+| Email generation | Structured, editable application draft |
+| Workflow orchestration | Deterministic LangGraph pipeline |
+| Agentic interaction | Tool-calling LangGraph agent |
+| External integrations | Gmail draft creation and Google Calendar reminders |
+| User interface | Streamlit application |
+| Persistence | Local JSON application records |
+| Safety controls | Structured outputs, evidence retrieval and duplicate-action checks |
 
 ---
 
-## Main features
+## System overview
+
+```mermaid
+flowchart LR
+    A[Raw job description] --> B[Structured job analysis]
+    B --> C[Semantic profile retrieval]
+    C --> D[Match insight]
+    D --> E[Tailored email draft]
+    E --> F{Human review}
+    F --> G[Save application]
+    F --> H[Create Gmail draft]
+    F --> I[Create Calendar follow-up]
+```
+
+JobCopilot exposes two complementary execution modes.
+
+### Deterministic workflow
+
+A fixed LangGraph pipeline runs:
+
+```text
+analyze_job
+    -> retrieve_memory
+    -> generate_match
+    -> generate_email
+```
+
+This mode is useful when predictable execution and transparent intermediate states are preferred.
+
+### Tool-calling agent
+
+A LangGraph agent can decide when to call tools for:
+
+- running the full JobCopilot pipeline;
+- creating a Gmail draft;
+- saving an application;
+- creating a Calendar reminder;
+- listing saved applications.
+
+This mode explores natural-language interaction while keeping operational capabilities behind explicit tools.
+
+---
+
+## Core features
 
 ### 1. Structured job analysis
-A raw job description is converted into a structured `JobAnalysis` object containing:
 
-- company
-- role
-- location
-- contract type
-- required skills
-- preferred skills
-- tools and stack
-- missions summary
-- domain focus
-- candidate highlights
+A raw offer is converted into a validated `JobAnalysis` object containing:
+
+- company and role;
+- location and contract type;
+- expected start date;
+- required and preferred skills;
+- tools and technical stack;
+- responsibilities;
+- domain focus;
+- candidate highlights.
 
 ### 2. Semantic profile memory
-Candidate profile information is stored as memory entries and indexed with:
 
-- Hugging Face embeddings
-- FAISS vector search
+Candidate information is represented as structured memory entries and indexed with:
 
-This allows the system to retrieve the most relevant background information for a given role.
+- `sentence-transformers/all-MiniLM-L6-v2` embeddings;
+- a local FAISS vector store;
+- similarity-based retrieval for role-specific evidence.
 
-### 3. Profile-to-job match insight
-The application compares:
+This prevents every application from relying on the same generic profile summary.
 
-- the structured job analysis
-- the retrieved profile memories
+### 3. Evidence-aware matching
 
-and produces a structured `MatchInsight` with:
+The system combines the structured offer and retrieved profile evidence to generate:
 
-- strengths
-- gaps
-- suggested positioning angles
-- relevant memories
+- matching strengths;
+- credible gaps;
+- recommended positioning angles;
+- the profile memories used in the analysis.
 
-### 4. Tailored email draft generation
-From the job analysis and match insight, the system creates a structured `EmailDraft` with:
+### 4. Tailored email drafting
 
-- subject
-- body
-- tone
+The application generates a structured `EmailDraft` containing:
 
-### 5. Local application persistence
-Application records are stored locally in JSON and include:
+- subject;
+- editable body;
+- requested tone.
 
-- company
-- role
-- email subject
-- email body
-- reminder date
-- status
-- creation timestamp
+The draft is shown to the user before any Gmail action.
 
-### 6. Gmail draft creation
-The generated email can be turned into a real **Gmail draft** through the Gmail API.
+### 5. Application tracking
 
-### 7. Google Calendar reminder creation
-The app can create a **follow-up reminder** in Google Calendar.
+Each application record can include:
 
-### 8. Streamlit interface
-The UI provides tabs for:
+- company and role;
+- source and status;
+- notes;
+- email subject and body;
+- reminder date;
+- creation timestamp.
 
-- Job Analysis
-- Match Insight
-- Email Draft
-- Saved Applications
-- Agent Chat
+### 6. Gmail and Calendar integration
 
-### 9. LangGraph workflow
-The deterministic pipeline is implemented as a LangGraph workflow with explicit state and nodes.
+After review, the user can:
 
-### 10. LangGraph agent
-A first agent version is also included, using `@tool`-decorated tools for:
+- create a real Gmail draft;
+- create a Google Calendar follow-up reminder.
 
-- running the pipeline
-- creating Gmail drafts
-- creating Calendar reminders
-- saving applications
-- listing saved applications
+OAuth credentials and tokens remain local and must never be committed.
 
 ---
 
-## Project structure
+## Reliability choices
+
+JobCopilot currently includes several practical safeguards:
+
+- **Pydantic-constrained outputs** for job analysis, matching and email drafts;
+- **retrieval grounding** through explicit candidate memories;
+- prompts designed to reduce unsupported candidate claims;
+- duplicate checks for saved applications;
+- duplicate checks for repeated reminders;
+- editable drafts before external actions;
+- deterministic temperature settings for the agent model.
+
+These controls reduce avoidable errors, but they do not make the current MVP production-ready.
+
+---
+
+## Current boundaries
+
+The repository should be read as a **working local MVP and engineering case study**.
+
+Current limitations include:
+
+- local JSON persistence instead of PostgreSQL or SQLite;
+- in-memory LangGraph checkpoints;
+- no multi-user authentication or authorization;
+- no public production deployment configuration;
+- no complete benchmark suite yet for extraction, retrieval or email grounding;
+- Gmail and Calendar integrations depend on local Google OAuth;
+- the current vector index is trusted local state and is not intended for untrusted uploads.
+
+These limitations are documented intentionally to separate implemented capabilities from future work.
+
+---
+
+## Technology stack
+
+### AI and orchestration
+
+- LangChain
+- LangGraph
+- Anthropic Claude
+- Hugging Face embeddings
+- FAISS
+- Pydantic
+
+### Application layer
+
+- Python
+- Streamlit
+- Gmail API
+- Google Calendar API
+
+### Current persistence
+
+- JSON application store
+- JSON profile memory store
+- local FAISS index
+
+---
+
+## Repository structure
 
 ```text
 app/
@@ -174,43 +247,18 @@ app/
     streamlit_app.py
 
 data/
-  applications.json
   profile_memories.json
-  faiss_index/
+  applications.json          # local runtime file
+  faiss_index/               # generated locally
 
-tokens/
-  google_token.json
-
-credentials.json
-.env
-````
-
----
-
-## Data flow
-
-### Workflow mode
-
-The current deterministic workflow is:
-
-1. analyze job
-2. retrieve profile memory
-3. generate match insight
-4. generate email draft
-
-### Agent mode
-
-The agent can use tools to:
-
-* run the pipeline,
-* create Gmail drafts,
-* save applications,
-* create follow-up reminders,
-* list saved applications.
+tokens/                      # local OAuth tokens, ignored
+credentials.json             # local OAuth configuration, ignored
+.env                         # local secrets, ignored
+```
 
 ---
 
-## Setup
+## Local setup
 
 ### 1. Clone the repository
 
@@ -219,27 +267,20 @@ git clone https://github.com/EL-K-Code/Job-Copilot.git
 cd Job-Copilot
 ```
 
-### 2. Create and activate a virtual environment
+### 2. Create a virtual environment
 
-#### Windows (Git Bash)
-
-```bash
-python -m venv .venv
-source .venv/Scripts/activate
-```
-
-#### Windows (PowerShell)
-
-```powershell
-python -m venv .venv
-.venv\Scripts\Activate.ps1
-```
-
-#### Linux / macOS
+Linux or macOS:
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate
+```
+
+Windows PowerShell:
+
+```powershell
+python -m venv .venv
+.venv\Scripts\Activate.ps1
 ```
 
 ### 3. Install dependencies
@@ -248,286 +289,140 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
----
+### 4. Configure environment variables
 
-## Environment variables
-
-Create a `.env` file at the project root:
+Create a local `.env` file:
 
 ```env
 ANTHROPIC_API_KEY=your_anthropic_api_key
-ANTHROPIC_MODEL=claude-sonnet-4-6
+ANTHROPIC_MODEL=your_supported_model
 
 GOOGLE_CLIENT_SECRET_FILE=credentials.json
 GOOGLE_TOKEN_DIR=tokens
-
 MEMORY_INDEX_DIR=data/faiss_index
 APPLICATIONS_FILE=data/applications.json
 PROFILE_MEMORIES_FILE=data/profile_memories.json
 ```
 
----
+### 5. Prepare local data
 
-## Google setup
-
-To enable Gmail draft creation and Calendar reminders, you need a Google Cloud OAuth configuration.
-
-### Required steps
-
-* create or select a Google Cloud project,
-* enable **Gmail API**,
-* enable **Google Calendar API**,
-* configure the OAuth consent screen,
-* create an OAuth client of type **Desktop app**,
-* download the client JSON file,
-* save it locally as:
-
-```text
-credentials.json
-```
-
-### Important
-
-Do **not** commit these files:
-
-* `credentials.json`
-* `tokens/google_token.json`
-* `.env`
-
----
-
-## First Google authentication
-
-After placing `credentials.json` at the project root, run:
-
-```bash
-python -m app.bootstrap_gmail_auth
-```
-
-This will open a local Google authentication flow and create:
-
-```text
-tokens/google_token.json
-```
-
-If you modify Google scopes later, delete the token and authenticate again.
-
----
-
-## Running the app
-
-### Run the backend test
-
-```bash
-python -m app.main
-```
-
-### Run the Streamlit app
-
-```bash
-streamlit run app/ui/streamlit_app.py --server.address 127.0.0.1 --server.port 8501
-```
-
-Then open:
-
-```text
-http://127.0.0.1:8501
-```
-
----
-
-## Expected local files
-
-### `data/applications.json`
+`data/applications.json`:
 
 ```json
 []
 ```
 
-### `data/profile_memories.json`
-
-This file should contain a list of memory entries, for example:
+Example `data/profile_memories.json`:
 
 ```json
 [
   {
-    "id": "skill_1",
-    "type": "skill",
-    "content": "Alex has strong programming experience in Python."
+    "id": "experience_1",
+    "type": "experience",
+    "content": "Designed and evaluated a biometric duplicate-detection pipeline."
+  },
+  {
+    "id": "project_1",
+    "type": "project",
+    "content": "Built an agentic job-application workflow with LangGraph and FAISS."
   }
 ]
 ```
 
----
+### 6. Configure Google OAuth
 
-## Streamlit interface
+To enable Gmail and Calendar actions:
 
-The Streamlit app includes:
+1. create a Google Cloud project;
+2. enable Gmail API and Google Calendar API;
+3. configure the OAuth consent screen;
+4. create a Desktop OAuth client;
+5. store the downloaded file locally as `credentials.json`;
+6. run:
 
-### Job Analysis
+```bash
+python -m app.bootstrap_gmail_auth
+```
 
-Displays:
+### 7. Run the application
 
-* structured job extraction,
-* key job metrics,
-* quick highlights.
+Backend workflow check:
 
-### Match Insight
+```bash
+python -m app.main
+```
 
-Displays:
+Streamlit interface:
 
-* retrieved profile memories,
-* strengths,
-* gaps,
-* suggested angles.
-
-### Email Draft
-
-Allows the user to:
-
-* review the generated subject,
-* edit the generated body,
-* set a recipient email,
-* choose a follow-up date,
-* create a Gmail draft,
-* create a Calendar reminder,
-* save the application locally.
-
-### Saved Applications
-
-Displays the locally stored application history.
-
-### Agent Chat
-
-Provides a first LangGraph tool-calling interface for interacting with JobCopilot through natural language.
+```bash
+streamlit run app/ui/streamlit_app.py --server.address 127.0.0.1 --server.port 8501
+```
 
 ---
 
-## LangGraph architecture
+## Security
 
-### Workflow graph
+Never commit:
 
-The deterministic graph currently includes nodes such as:
+- `.env`;
+- `credentials.json`;
+- OAuth tokens;
+- private candidate profile memories;
+- real application records containing personal information.
 
-* `analyze_job`
-* `retrieve_memory`
-* `generate_match`
-* `generate_email`
-
-### Agent graph
-
-The agent graph uses:
-
-* `messages` state
-* tool-calling
-* `ToolNode`
-* loop between assistant and tools
-
-Available tools include:
-
-* `run_jobcopilot_pipeline_tool`
-* `create_gmail_draft_tool`
-* `create_followup_reminder_tool`
-* `save_application_record_tool`
-* `list_saved_applications_tool`
+Before deploying a derivative of this project, replace local secret handling, isolate user sessions, review tool permissions and add an explicit approval boundary before every external side effect.
 
 ---
 
-## Reliability choices
+## Evaluation roadmap
 
-This project was designed with a few practical safety constraints:
+The next major milestone is to evaluate the system rather than only expand its features.
 
-* structured outputs with **Pydantic**
-* retrieval grounding via **profile memory**
-* stricter prompts to reduce unsupported claims
-* anti-duplicate safeguards for:
+Planned evaluation dimensions:
 
-  * saved applications
-  * repeated Gmail draft creation in the same session
-  * repeated Calendar reminders in the same session
-
----
-
-## Example workflow
-
-A typical user flow is:
-
-1. paste a job description,
-2. click **Analyze job**,
-3. review job analysis and match insight,
-4. edit the generated email if needed,
-5. create a Gmail draft,
-6. create a follow-up reminder,
-7. save the application record.
+- field-level accuracy of job-offer extraction;
+- Recall@k and ranking quality for profile-memory retrieval;
+- percentage of generated candidate claims supported by retrieved evidence;
+- email relevance and factuality under human review;
+- tool-call success and duplicate-action rate;
+- latency and model cost per completed workflow;
+- regression tests across prompt and model versions.
 
 ---
 
-## Example use cases
+## Engineering roadmap
 
-* internship applications
-* AI / data / software roles
-* follow-up management after an application
-* demo of an applied AI workflow
-* demonstration of LangGraph workflow vs agent orchestration
-
----
-
-## Limitations
-
-Current limitations of the MVP:
-
-* local JSON persistence instead of a database,
-* no advanced multi-user support,
-* no production deployment configuration,
-* no full human approval workflow beyond UI interaction,
-* Gmail and Calendar actions depend on local OAuth configuration.
-
----
-
-## Roadmap
-
-Planned improvements include:
-
-* richer application tracking fields,
-* stronger action traceability,
-* persistent storage in SQLite or Postgres,
-* more granular LangGraph routing,
-* more atomic agent tools,
-* improved evaluation and logging,
-* deployment-ready packaging.
+- add automated unit and integration tests;
+- pin and lock dependency versions;
+- isolate agent and workflow sessions;
+- migrate persistence to SQLite or PostgreSQL;
+- introduce explicit approval gates for external actions;
+- add tracing, structured logs and evaluation datasets;
+- containerize the application;
+- publish a safe demo using synthetic profile data;
+- add screenshots and a short demonstration video.
 
 ---
 
 ## What this project demonstrates
 
-This repository demonstrates:
+JobCopilot is designed to demonstrate more than prompt engineering:
 
-* applied LLM engineering,
-* structured extraction,
-* retrieval-augmented reasoning,
-* semantic memory,
-* Pydantic-constrained outputs,
-* workflow orchestration with LangGraph,
-* first tool-calling agent design,
-* integration with real external systems (Gmail, Google Calendar),
-* end-to-end product thinking.
+- applied LLM engineering;
+- structured extraction and validation;
+- retrieval-augmented reasoning;
+- semantic memory;
+- LangGraph workflow and agent design;
+- external tool integration;
+- human-supervised automation;
+- product and reliability thinking.
 
 ---
 
 ## Author
 
-**Alex Komla LABOU**
+**Alex Komla LABOU**  
+Applied AI and Machine Learning Engineer — Research-Oriented
 
-GitHub: [EL-K-Code](https://github.com/EL-K-Code)
-
----
-
-## Security note
-
-Never commit:
-
-* `credentials.json`
-* `tokens/`
-* `.env`
-
-Keep OAuth credentials local only.
+- GitHub: [EL-K-Code](https://github.com/EL-K-Code)
+- LinkedIn: [komla-alex-labou](https://www.linkedin.com/in/komla-alex-labou/)
