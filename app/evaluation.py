@@ -17,8 +17,6 @@ SCALAR_FIELDS = (
     "start_date",
 )
 
-# These fields are direct extractions from the offer and can be compared against
-# human-authored gold annotations with set metrics.
 SCORED_LIST_FIELDS = (
     "missions_summary",
     "required_skills",
@@ -27,46 +25,27 @@ SCORED_LIST_FIELDS = (
     "domain_focus",
 )
 
-# This field is a recommendation generated from the extracted offer rather than
-# a direct extraction target. It remains visible in reports but is intentionally
-# excluded from macro extraction F1.
 UNSCORED_LIST_FIELDS = ("key_highlights_for_candidate",)
-
-# Backward-compatible alias for callers that imported LIST_FIELDS.
 LIST_FIELDS = SCORED_LIST_FIELDS
-
 GROUNDING_LABELS = ("supported", "unsupported", "ambiguous")
 
-# Canonical forms used only for evaluation. This prevents equivalent forms such
-# as "Natural Language Processing (NLP)" and "natural language processing"
-# from being counted as different predictions.
 EVALUATION_ALIASES = {
     "natural language processing": "nlp",
-    "nlp": "nlp",
     "retrieval augmented generation": "rag",
-    "rag": "rag",
     "large language models": "llm",
     "large language model": "llm",
     "llms": "llm",
-    "llm": "llm",
     "application programming interfaces": "api",
     "application programming interface": "api",
     "apis": "api",
-    "api": "api",
     "machine learning": "ml",
-    "ml": "ml",
     "deep learning": "dl",
-    "dl": "dl",
-    "computer vision": "computer vision",
     "cv": "computer vision",
     "artificial intelligence": "ai",
-    "ai": "ai",
-    "sentence bert": "sbert",
     "sentence berts": "sbert",
-    "sbert": "sbert",
+    "sentence bert": "sbert",
     "continuous integration continuous deployment": "cicd",
     "ci cd": "cicd",
-    "cicd": "cicd",
 }
 
 
@@ -75,18 +54,25 @@ def normalize_text(value: str) -> str:
 
 
 def normalize_evaluation_item(value: str) -> str:
-    """Normalize a list item and collapse documented acronym equivalents."""
+    """Normalize punctuation and replace documented expansions with acronyms."""
     text = unicodedata.normalize("NFKC", str(value)).casefold()
     text = text.replace("&", " and ")
     text = re.sub(r"[-/()]", " ", text)
     text = re.sub(r"[^\w+#.]+", " ", text)
     text = " ".join(text.split())
 
-    padded = f" {text} "
     for alias in sorted(EVALUATION_ALIASES, key=len, reverse=True):
-        if f" {alias} " in padded:
-            return EVALUATION_ALIASES[alias]
-    return text
+        canonical = EVALUATION_ALIASES[alias]
+        text = re.sub(rf"(?<!\w){re.escape(alias)}(?!\w)", canonical, text)
+
+    # Expanded and abbreviated forms often appear together, for example
+    # "natural language processing (NLP)" -> "nlp nlp". Remove duplicate
+    # tokens while preserving the rest of the phrase, such as "llm evaluation".
+    tokens: list[str] = []
+    for token in text.split():
+        if not tokens or token != tokens[-1]:
+            tokens.append(token)
+    return " ".join(tokens)
 
 
 def normalize_items(values: Iterable[str]) -> set[str]:
