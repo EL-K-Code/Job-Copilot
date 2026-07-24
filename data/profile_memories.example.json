@@ -1,0 +1,52 @@
+[
+  {
+    "id": "identity_1",
+    "type": "identity",
+    "content": "The demo candidate is an early-career machine learning engineer interested in reliable applied AI systems."
+  },
+  {
+    "id": "education_1",
+    "type": "education",
+    "content": "The demo candidate completed graduate-level training in data science, statistics and software engineering."
+  },
+  {
+    "id": "experience_1",
+    "type": "experience",
+    "content": "The demo candidate evaluated a machine learning matching system using ROC-AUC, threshold analysis and structured error reviews."
+  },
+  {
+    "id": "experience_2",
+    "type": "experience",
+    "content": "The demo candidate contributed to data cleaning, exploratory analysis and statistical modeling on operational datasets."
+  },
+  {
+    "id": "project_1",
+    "type": "project",
+    "content": "The demo candidate built an agentic workflow with LangGraph, structured LLM outputs and human-supervised tool calls."
+  },
+  {
+    "id": "project_2",
+    "type": "project",
+    "content": "The demo candidate developed a retrieval prototype using sentence embeddings, FAISS and explicit relevance evaluation."
+  },
+  {
+    "id": "project_3",
+    "type": "project",
+    "content": "The demo candidate created a FastAPI model-serving service and containerized it with Docker."
+  },
+  {
+    "id": "skill_1",
+    "type": "skill",
+    "content": "The demo candidate works with Python, SQL, PyTorch, scikit-learn, FastAPI, Git and Docker."
+  },
+  {
+    "id": "skill_2",
+    "type": "skill",
+    "content": "The demo candidate has practical experience with NLP, LLM APIs, RAG, evaluation metrics and data pipelines."
+  },
+  {
+    "id": "preference_1",
+    "type": "preference",
+    "content": "The demo candidate prefers concise application emails that only use evidence present in the candidate profile."
+  }
+]

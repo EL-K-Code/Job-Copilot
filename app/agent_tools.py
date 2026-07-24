@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Any
+from uuid import uuid4
 
 from langchain_core.tools import tool
 
@@ -29,7 +30,11 @@ def run_jobcopilot_pipeline_tool(job_text: str) -> dict[str, Any]:
 
     result = jobcopilot_graph.invoke(
         {"job_text": job_text},
-        config={"configurable": {"thread_id": "agent-jobcopilot-pipeline"}},
+        config={
+            "configurable": {
+                "thread_id": f"agent-jobcopilot-pipeline-{uuid4()}"
+            }
+        },
     )
 
     return {
@@ -45,15 +50,32 @@ def create_gmail_draft_tool(
     to: str,
     subject: str,
     body: str,
+    confirmed: bool = False,
 ) -> dict[str, Any]:
     """
-    Create a Gmail draft for the given recipient, subject, and body.
+    Create a Gmail draft only after the user explicitly confirms the exact
+    recipient, subject and body. Set confirmed=true only after confirmation.
     """
-    return create_gmail_draft(
+    if not confirmed:
+        return {
+            "status": "confirmation_required",
+            "message": "Explicit user confirmation is required before creating the Gmail draft.",
+            "preview": {
+                "to": to,
+                "subject": subject,
+                "body": body,
+            },
+        }
+
+    result = create_gmail_draft(
         to=to,
         subject=subject,
         body=body,
     )
+    return {
+        "status": "created",
+        "draft": result,
+    }
 
 
 @tool
@@ -61,11 +83,23 @@ def create_followup_reminder_tool(
     company: str,
     role: str,
     followup_date: str,
+    confirmed: bool = False,
 ) -> dict[str, Any]:
     """
-    Create a Google Calendar follow-up reminder for a job application.
-    followup_date must be in YYYY-MM-DD format.
+    Create a Google Calendar follow-up reminder only after the user explicitly
+    confirms the company, role and date. followup_date must be YYYY-MM-DD.
     """
+    if not confirmed:
+        return {
+            "status": "confirmation_required",
+            "message": "Explicit user confirmation is required before creating the Calendar event.",
+            "preview": {
+                "company": company,
+                "role": role,
+                "followup_date": followup_date,
+            },
+        }
+
     if has_existing_reminder(
         company=company,
         role=role,

@@ -9,6 +9,14 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
+def _env_flag(name: str, default: bool = False) -> bool:
+    """Read a boolean environment variable using common truthy values."""
+    raw_value = os.getenv(name)
+    if raw_value is None:
+        return default
+    return raw_value.strip().lower() in {"1", "true", "yes", "on"}
+
+
 @dataclass(frozen=True)
 class Settings:
     anthropic_api_key: str = os.getenv("ANTHROPIC_API_KEY", "")
@@ -19,7 +27,16 @@ class Settings:
 
     memory_index_dir: str = os.getenv("MEMORY_INDEX_DIR", "data/faiss_index")
     applications_file: str = os.getenv("APPLICATIONS_FILE", "data/applications.json")
-    profile_memories_file: str = os.getenv("PROFILE_MEMORIES_FILE", "data/profile_memories.json")
+    profile_memories_file: str = os.getenv(
+        "PROFILE_MEMORIES_FILE",
+        "data/profile_memories.example.json",
+    )
+
+    default_timezone: str = os.getenv("DEFAULT_TIMEZONE", "Europe/Paris")
+    allow_trusted_faiss_deserialization: bool = _env_flag(
+        "ALLOW_TRUSTED_FAISS_DESERIALIZATION",
+        default=False,
+    )
 
     @property
     def project_root(self) -> Path:
@@ -44,6 +61,15 @@ class Settings:
     @property
     def profile_memories_path(self) -> Path:
         return self.project_root / self.profile_memories_file
+
+    def require_anthropic_api_key(self) -> str:
+        """Return the configured API key or fail with an actionable message."""
+        if not self.anthropic_api_key.strip():
+            raise RuntimeError(
+                "ANTHROPIC_API_KEY is not configured. Add it to a local .env file "
+                "or export it in the current environment."
+            )
+        return self.anthropic_api_key
 
 
 settings = Settings()

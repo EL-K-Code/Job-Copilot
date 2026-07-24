@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import logging
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -10,18 +12,18 @@ from langchain_community.vectorstores import FAISS
 
 from app.config import settings
 
+logger = logging.getLogger(__name__)
+
 
 def load_profile_memories(file_path: Path | None = None) -> list[dict[str, Any]]:
-    """
-    Load structured profile memories from a JSON file.
-    """
+    """Load structured profile memories from a JSON file."""
     target_path = file_path or settings.profile_memories_path
 
     if not target_path.exists():
         raise FileNotFoundError(f"Profile memories file not found: {target_path}")
 
-    with open(target_path, "r", encoding="utf-8") as f:
-        data = json.load(f)
+    with open(target_path, "r", encoding="utf-8") as file_handle:
+        data = json.load(file_handle)
 
     if not isinstance(data, list):
         raise ValueError("Profile memories JSON must contain a list of memory objects.")
@@ -30,13 +32,11 @@ def load_profile_memories(file_path: Path | None = None) -> list[dict[str, Any]]
 
 
 def profile_memories_to_documents(memories: list[dict[str, Any]]) -> list[Document]:
-    """
-    Convert structured profile memories into LangChain Document objects.
-    """
+    """Convert structured profile memories into LangChain documents."""
     documents: list[Document] = []
 
     for memory in memories:
-        content = memory.get("content", "").strip()
+        content = str(memory.get("content", "")).strip()
         if not content:
             continue
 
@@ -56,9 +56,7 @@ def profile_memories_to_documents(memories: list[dict[str, Any]]) -> list[Docume
 
 
 def get_embeddings_model() -> HuggingFaceEmbeddings:
-    """
-    Return the embeddings model used for profile memory retrieval.
-    """
+    """Return the embeddings model used for profile-memory retrieval."""
     return HuggingFaceEmbeddings(
         model_name="sentence-transformers/all-MiniLM-L6-v2"
     )
@@ -67,9 +65,7 @@ def get_embeddings_model() -> HuggingFaceEmbeddings:
 def build_profile_vector_store(
     memories: list[dict[str, Any]] | None = None,
 ) -> FAISS:
-    """
-    Build an in-memory FAISS vector store from profile memories.
-    """
+    """Build an in-memory FAISS vector store from profile memories."""
     if memories is None:
         memories = load_profile_memories()
 
@@ -79,25 +75,28 @@ def build_profile_vector_store(
     if not documents:
         raise ValueError("No valid profile memories found to index.")
 
-    vector_store = FAISS.from_documents(
+    return FAISS.from_documents(
         documents=documents,
         embedding=embeddings,
     )
-    return vector_store
 
 
 def save_profile_vector_store(vector_store: FAISS) -> None:
-    """
-    Persist the FAISS vector store locally.
-    """
+    """Persist a locally generated FAISS vector store."""
     settings.memory_index_path.mkdir(parents=True, exist_ok=True)
     vector_store.save_local(str(settings.memory_index_path))
 
 
 def load_profile_vector_store() -> FAISS:
-    """
-    Load the persisted FAISS vector store from disk.
-    """
+    """Load a trusted locally generated FAISS store when explicitly enabled."""
+    if not settings.allow_trusted_faiss_deserialization:
+        raise RuntimeError(
+            "Loading a persisted FAISS store is disabled by default because the "
+            "LangChain store includes pickle data. Rebuild from profile_memories.json "
+            "or set ALLOW_TRUSTED_FAISS_DESERIALIZATION=true only for an index that "
+            "you generated locally and trust."
+        )
+
     embeddings = get_embeddings_model()
 
     if not settings.memory_index_path.exists():
@@ -112,27 +111,59 @@ def load_profile_vector_store() -> FAISS:
     )
 
 
+@lru_cache(maxsize=1)
 def get_or_create_profile_vector_store() -> FAISS:
     """
-    Load the vector store if the saved FAISS index exists,
-    otherwise build and save it.
+    Load a trusted persisted store when explicitly allowed. Otherwise rebuild
+    the in-memory index once per process from the auditable JSON source of truth.
     """
     index_file = settings.memory_index_path / "index.faiss"
     store_file = settings.memory_index_path / "index.pkl"
+    persisted_store_exists = index_file.exists() and store_file.exists()
 
-    if index_file.exists() and store_file.exists():
+    if persisted_store_exists and settings.allow_trusted_faiss_deserialization:
         return load_profile_vector_store()
 
+    if persisted_store_exists:
+        logger.warning(
+            "A persisted FAISS store exists but trusted deserialization is disabled; "
+            "rebuilding the in-memory index from profile_memories.json."
+        )
+
     vector_store = build_profile_vector_store()
-    save_profile_vector_store(vector_store)
+
+    if settings.allow_trusted_faiss_deserialization:
+        save_profile_vector_store(vector_store)
+
     return vector_store
+
+
+def clear_profile_vector_store_cache() -> None:
+    """Clear the process cache after profile memories are intentionally changed."""
+    get_or_create_profile_vector_store.cache_clear()
+
+
+def retrieve_profile_context_with_scores(
+    query: str,
+    k: int = 4,
+) -> list[tuple[Document, float]]:
+    """Retrieve profile memories together with their raw FAISS distances."""
+    normalized_query = query.strip()
+    if not normalized_query:
+        raise ValueError("The retrieval query cannot be empty.")
+    if k < 1:
+        raise ValueError("k must be greater than or equal to 1.")
+
+    vector_store = get_or_create_profile_vector_store()
+    return vector_store.similarity_search_with_score(normalized_query, k=k)
+
 
 def retrieve_profile_context(
     query: str,
     k: int = 4,
 ) -> list[Document]:
-    """
-    Retrieve the most relevant profile memories for a given query.
-    """
-    vector_store = get_or_create_profile_vector_store()
-    return vector_store.similarity_search(query, k=k)
+    """Retrieve the most relevant profile memories for a query."""
+    return [
+        document
+        for document, _score in retrieve_profile_context_with_scores(query, k=k)
+    ]
