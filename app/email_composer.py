@@ -127,16 +127,46 @@ def _rank_records_if_needed(
 ) -> list[dict]:
     if job_analysis is not None:
         return rank_memory_records_for_job(job_analysis, memory_records)
-    return sorted(
-        enumerate(memory_records),
-        key=lambda item: (_type_priority(item[1]), item[0]),
-    ) and [
+    return [
         record
         for _index, record in sorted(
             enumerate(memory_records),
             key=lambda item: (_type_priority(item[1]), item[0]),
         )
     ]
+
+
+def _append_diverse_then_ranked(
+    candidates: list[dict],
+    selected_ids: list[str],
+    selected_types: set[str],
+    *,
+    limit: int,
+) -> None:
+    """Append valid candidates, preferring new evidence types before pure rank order."""
+    for record in candidates:
+        memory_id = str(record.get("id", "")).strip()
+        memory_type = str(record.get("type", "unknown")).casefold()
+        content = str(record.get("content", "")).strip()
+        if not memory_id or not content or memory_id in selected_ids:
+            continue
+        if memory_type in selected_types:
+            continue
+        selected_ids.append(memory_id)
+        selected_types.add(memory_type)
+        if len(selected_ids) >= limit:
+            return
+
+    for record in candidates:
+        memory_id = str(record.get("id", "")).strip()
+        memory_type = str(record.get("type", "unknown")).casefold()
+        content = str(record.get("content", "")).strip()
+        if not memory_id or not content or memory_id in selected_ids:
+            continue
+        selected_ids.append(memory_id)
+        selected_types.add(memory_type)
+        if len(selected_ids) >= limit:
+            return
 
 
 def deterministic_fallback_selection(
@@ -151,39 +181,38 @@ def deterministic_fallback_selection(
 
     ranked_records = _rank_records_if_needed(memory_records, job_analysis)
     positive_records = [record for record in ranked_records if _record_score(record) > 0]
-    remaining_records = [record for record in ranked_records if _record_score(record) <= 0]
-    candidates = [*positive_records, *remaining_records]
+    generic_records = [record for record in ranked_records if _record_score(record) <= 0]
 
     selected_ids: list[str] = []
     selected_types: set[str] = set()
 
-    # First pass favors evidence-type diversity while preserving relevance order.
-    for record in candidates:
-        memory_id = str(record.get("id", "")).strip()
-        memory_type = str(record.get("type", "unknown")).casefold()
-        content = str(record.get("content", "")).strip()
-        if not memory_id or not content or memory_id in selected_ids:
-            continue
-        if memory_type in selected_types:
-            continue
-        selected_ids.append(memory_id)
-        selected_types.add(memory_type)
-        if len(selected_ids) >= limit:
-            return EmailEvidenceSelection(selected_memory_ids=selected_ids)
+    # Explicitly aligned evidence is always exhausted before generic evidence. This
+    # keeps the fallback consistent with validate_memory_selection even when several
+    # high-scoring memories share the same type (for example, three project records).
+    primary_candidates = positive_records or generic_records
+    _append_diverse_then_ranked(
+        primary_candidates,
+        selected_ids,
+        selected_types,
+        limit=limit,
+    )
 
-    # Second pass fills remaining slots with the strongest unused evidence.
-    for record in candidates:
-        memory_id = str(record.get("id", "")).strip()
-        content = str(record.get("content", "")).strip()
-        if not memory_id or not content or memory_id in selected_ids:
-            continue
-        selected_ids.append(memory_id)
-        if len(selected_ids) >= limit:
-            return EmailEvidenceSelection(selected_memory_ids=selected_ids)
+    # Generic evidence may fill missing slots only when fewer aligned memories exist
+    # than the requested limit. It can never displace an available aligned memory.
+    if positive_records and len(selected_ids) < limit:
+        _append_diverse_then_ranked(
+            generic_records,
+            selected_ids,
+            selected_types,
+            limit=limit,
+        )
 
     if not selected_ids:
         raise ValueError("No valid retrieved memory is available for email composition.")
-    return EmailEvidenceSelection(selected_memory_ids=selected_ids)
+
+    selection = EmailEvidenceSelection(selected_memory_ids=selected_ids)
+    validate_memory_selection(selection, ranked_records)
+    return selection
 
 
 def _safe_offer_label(value: str, fallback: str) -> str:
