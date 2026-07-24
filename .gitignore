@@ -7,6 +7,9 @@ __pycache__/
 *.py[cod]
 *.pyo
 *.pyd
+.pytest_cache/
+.coverage
+htmlcov/
 
 # Environment files
 .env
@@ -15,9 +18,10 @@ __pycache__/
 # Streamlit
 .streamlit/secrets.toml
 
-# Google OAuth tokens
+# Google OAuth tokens and credentials
 tokens/
 *.token.json
+credentials.json
 
 # Generated vector store / indexes
 data/faiss_index/
@@ -26,6 +30,7 @@ data/faiss_index/
 
 # Local generated data
 data/applications.json
+evaluation/results/
 
 # OS / editor files
 .DS_Store
@@ -37,7 +42,3 @@ data/applications.json
 
 # Logs
 *.log
-# Secrets
-credentials.json
-tokens/
-.env
