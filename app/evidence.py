@@ -32,12 +32,18 @@ RISKY_CLAIM_PHRASES = (
 
 
 def normalize_for_evidence(value: str) -> str:
-    """Normalize prose for conservative substring checks."""
+    """Normalize prose for conservative evidence checks."""
     text = unicodedata.normalize("NFKC", str(value)).casefold()
     text = text.replace("&", " and ")
     text = re.sub(r"[-_/]", " ", text)
     text = re.sub(r"[^\w+#.]+", " ", text)
     return " ".join(text.split())
+
+
+def _contains_phrase(text: str, phrase: str) -> bool:
+    normalized_text = f" {normalize_for_evidence(text)} "
+    normalized_phrase = f" {normalize_for_evidence(phrase)} "
+    return normalized_phrase in normalized_text
 
 
 def normalize_memory_records(
@@ -92,14 +98,14 @@ def validate_claim_evidence(
                 f"Claim {claim_index} must appear verbatim in the generated email body."
             )
 
-        supporting_text = normalize_for_evidence(
-            " ".join(memory_by_id[memory_id] for memory_id in supporting_ids)
+        supporting_text = " ".join(
+            memory_by_id[memory_id] for memory_id in supporting_ids
         )
         unsupported_phrases = [
             phrase
             for phrase in RISKY_CLAIM_PHRASES
-            if normalize_for_evidence(phrase) in normalized_claim
-            and normalize_for_evidence(phrase) not in supporting_text
+            if _contains_phrase(claim_text, phrase)
+            and not _contains_phrase(supporting_text, phrase)
         ]
         if unsupported_phrases:
             raise ValueError(
