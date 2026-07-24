@@ -113,13 +113,30 @@ def validate_memory_selection(
         )
 
 
+def _type_priority(record: dict) -> int:
+    memory_type = str(record.get("type", "unknown")).casefold()
+    try:
+        return _MEMORY_TYPE_PRIORITY.index(memory_type)
+    except ValueError:
+        return len(_MEMORY_TYPE_PRIORITY)
+
+
 def _rank_records_if_needed(
     memory_records: list[dict],
     job_analysis: JobAnalysis | None,
 ) -> list[dict]:
-    if job_analysis is None:
-        return list(memory_records)
-    return rank_memory_records_for_job(job_analysis, memory_records)
+    if job_analysis is not None:
+        return rank_memory_records_for_job(job_analysis, memory_records)
+    return sorted(
+        enumerate(memory_records),
+        key=lambda item: (_type_priority(item[1]), item[0]),
+    ) and [
+        record
+        for _index, record in sorted(
+            enumerate(memory_records),
+            key=lambda item: (_type_priority(item[1]), item[0]),
+        )
+    ]
 
 
 def deterministic_fallback_selection(
@@ -134,7 +151,8 @@ def deterministic_fallback_selection(
 
     ranked_records = _rank_records_if_needed(memory_records, job_analysis)
     positive_records = [record for record in ranked_records if _record_score(record) > 0]
-    candidates = positive_records or ranked_records
+    remaining_records = [record for record in ranked_records if _record_score(record) <= 0]
+    candidates = [*positive_records, *remaining_records]
 
     selected_ids: list[str] = []
     selected_types: set[str] = set()
