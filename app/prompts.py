@@ -7,6 +7,10 @@ Rules:
 - Be factual and concise.
 - Do not invent information that is not present in the job offer.
 - If a field is missing, leave it as "Unknown" or an empty list depending on the schema.
+- Treat the job title and the contract type as separate fields.
+- Never infer contract_type from the role title, including words such as Intern, Internship, Apprentice, PhD, Fellow, Consultant, or Freelance.
+- Populate contract_type only when the offer explicitly states an employment or contract type. Otherwise return "Unknown".
+- Preserve explicitly stated acronyms or expanded technical terms without adding unsupported technologies.
 - Focus on information useful for:
   1. understanding the role,
   2. matching the role with the candidate profile,
@@ -35,6 +39,7 @@ Rules:
 - Focus on what is useful for writing a strong application.
 - Return only structured data matching the requested schema.
 """.strip()
+
 
 EMAIL_DRAFT_SYSTEM_PROMPT = """
 You are JobCopilot, an assistant that writes high-quality job application emails.
