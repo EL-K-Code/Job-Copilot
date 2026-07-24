@@ -14,11 +14,16 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from app.config import settings
-from app.evaluation import SCORED_LIST_FIELDS, SCALAR_FIELDS, evaluate_job_analysis
+from app.evaluation import (
+    SCALAR_FIELDS,
+    SCORED_LIST_FIELDS,
+    SUMMARY_LIST_FIELDS,
+    evaluate_job_analysis,
+)
 from app.services.llm import analyze_job_offer
 
 
-EVALUATION_PROTOCOL_VERSION = "1.1.0"
+EVALUATION_PROTOCOL_VERSION = "1.2.0"
 
 
 def load_cases(path: Path) -> list[dict]:
@@ -41,6 +46,14 @@ def sha256_file(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def _mean_metric(case_results: list[dict], metric_name: str) -> float:
+    return (
+        mean(item["metrics"][metric_name] for item in case_results)
+        if case_results
+        else 0.0
+    )
+
+
 def summarize_results(case_results: list[dict]) -> dict:
     scalar_by_field = {
         field: mean(
@@ -51,6 +64,18 @@ def summarize_results(case_results: list[dict]) -> dict:
         for field in SCALAR_FIELDS
         if any(field in item["metrics"]["scalar_fields"] for item in case_results)
     }
+    strict_scalar_by_field = {
+        field: mean(
+            item["metrics"]["strict_scalar_fields"][field]
+            for item in case_results
+            if field in item["metrics"]["strict_scalar_fields"]
+        )
+        for field in SCALAR_FIELDS
+        if any(
+            field in item["metrics"]["strict_scalar_fields"]
+            for item in case_results
+        )
+    }
     list_f1_by_field = {
         field: mean(
             item["metrics"]["list_fields"][field]["f1"]
@@ -60,21 +85,31 @@ def summarize_results(case_results: list[dict]) -> dict:
         for field in SCORED_LIST_FIELDS
         if any(field in item["metrics"]["list_fields"] for item in case_results)
     }
+    summary_exact_f1_by_field = {
+        field: mean(
+            item["metrics"]["summary_fields"][field]["f1"]
+            for item in case_results
+            if field in item["metrics"]["summary_fields"]
+        )
+        for field in SUMMARY_LIST_FIELDS
+        if any(field in item["metrics"]["summary_fields"] for item in case_results)
+    }
 
     return {
         "number_of_cases": len(case_results),
-        "mean_scalar_accuracy": (
-            mean(item["metrics"]["scalar_accuracy"] for item in case_results)
-            if case_results
-            else 0.0
+        "mean_scalar_accuracy": _mean_metric(case_results, "scalar_accuracy"),
+        "mean_strict_scalar_accuracy": _mean_metric(
+            case_results, "strict_scalar_accuracy"
         ),
-        "mean_macro_list_f1": (
-            mean(item["metrics"]["macro_list_f1"] for item in case_results)
-            if case_results
-            else 0.0
+        "mean_macro_list_f1": _mean_metric(case_results, "macro_list_f1"),
+        "mean_macro_label_list_f1": _mean_metric(
+            case_results, "macro_label_list_f1"
         ),
+        "mean_summary_exact_f1": _mean_metric(case_results, "summary_exact_f1"),
         "scalar_accuracy_by_field": scalar_by_field,
+        "strict_scalar_accuracy_by_field": strict_scalar_by_field,
         "list_f1_by_field": list_f1_by_field,
+        "summary_exact_f1_by_field": summary_exact_f1_by_field,
     }
 
 
@@ -161,7 +196,15 @@ def main() -> None:
         "prompt_sha256": sha256_file(PROJECT_ROOT / "app" / "prompts.py"),
         "metric_definition": {
             "scored_scalar_fields": list(SCALAR_FIELDS),
-            "scored_list_fields": list(SCORED_LIST_FIELDS),
+            "contract_type_scoring": {
+                "primary": "broad multilingual normalized category match",
+                "diagnostic": "strict normalized text match",
+            },
+            "scored_closed_label_list_fields": list(SCORED_LIST_FIELDS),
+            "summary_diagnostic_fields": list(SUMMARY_LIST_FIELDS),
+            "summary_diagnostic": (
+                "Exact normalized lexical F1, reported separately because valid paraphrases may differ."
+            ),
             "unscored_generated_fields": ["key_highlights_for_candidate"],
             "acronym_normalization": True,
         },
