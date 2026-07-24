@@ -18,7 +18,7 @@ def get_base_llm() -> ChatAnthropic:
     return ChatAnthropic(
         model=settings.anthropic_model,
         temperature=0,
-        api_key=settings.anthropic_api_key,
+        api_key=settings.require_anthropic_api_key(),
     )
 
 
@@ -38,11 +38,14 @@ def get_email_draft_llm():
 
 
 def analyze_job_offer(job_text: str) -> JobAnalysis:
+    if not job_text.strip():
+        raise ValueError("The job offer text cannot be empty.")
+
     structured_llm = get_job_analysis_llm()
 
     messages = [
         SystemMessage(content=JOB_ANALYSIS_SYSTEM_PROMPT),
-        HumanMessage(content=f"Job offer:\n{job_text}")
+        HumanMessage(content=f"Job offer:\n{job_text}"),
     ]
 
     result = structured_llm.invoke(messages)
