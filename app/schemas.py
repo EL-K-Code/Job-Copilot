@@ -68,6 +68,15 @@ class EvidenceBackedClaim(BaseModel):
         min_length=1,
         description="IDs of retrieved profile memories that directly support the claim.",
     )
+    relevance_score: float = Field(
+        default=0.0,
+        ge=0.0,
+        description="Deterministic offer-to-memory relevance score used for selection audit.",
+    )
+    aligned_job_terms: list[str] = Field(
+        default_factory=list,
+        description="Explicit offer terms that matched the supporting memory.",
+    )
 
     @field_validator("claim")
     @classmethod
@@ -77,13 +86,17 @@ class EvidenceBackedClaim(BaseModel):
             raise ValueError("Evidence-backed claim text cannot be empty.")
         return normalized
 
+    @field_validator("supporting_memory_ids", "aligned_job_terms")
+    @classmethod
+    def normalize_string_lists(cls, value: list[str]) -> list[str]:
+        return list(dict.fromkeys(item.strip() for item in value if item.strip()))
+
     @field_validator("supporting_memory_ids")
     @classmethod
     def validate_supporting_memory_ids(cls, value: list[str]) -> list[str]:
-        normalized = list(dict.fromkeys(item.strip() for item in value if item.strip()))
-        if not normalized:
+        if not value:
             raise ValueError("Evidence-backed claims require at least one memory ID.")
-        return normalized
+        return value
 
 
 class MatchInsight(BaseModel):
@@ -149,6 +162,13 @@ class EmailDraft(BaseModel):
     tone: Literal["professional", "warm", "concise", "premium"] = Field(
         default="professional",
         description="Tone used in the email.",
+    )
+    composition_variant: Literal["direct", "focused", "warm"] = Field(
+        default="direct",
+        description=(
+            "Deterministically selected safe template variant. It changes only non-factual "
+            "opening and closing prose."
+        ),
     )
     claim_evidence: list[EvidenceBackedClaim] = Field(
         default_factory=list,
