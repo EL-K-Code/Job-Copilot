@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import math
+import re
+import unicodedata
 from collections import Counter
 from typing import Any, Iterable
 
@@ -15,27 +17,83 @@ SCALAR_FIELDS = (
     "start_date",
 )
 
-LIST_FIELDS = (
+# These fields are direct extractions from the offer and can be compared against
+# human-authored gold annotations with set metrics.
+SCORED_LIST_FIELDS = (
     "missions_summary",
     "required_skills",
     "preferred_skills",
     "tools_and_stack",
     "domain_focus",
-    "key_highlights_for_candidate",
 )
 
+# This field is a recommendation generated from the extracted offer rather than
+# a direct extraction target. It remains visible in reports but is intentionally
+# excluded from macro extraction F1.
+UNSCORED_LIST_FIELDS = ("key_highlights_for_candidate",)
+
+# Backward-compatible alias for callers that imported LIST_FIELDS.
+LIST_FIELDS = SCORED_LIST_FIELDS
+
 GROUNDING_LABELS = ("supported", "unsupported", "ambiguous")
+
+# Canonical forms used only for evaluation. This prevents equivalent forms such
+# as "Natural Language Processing (NLP)" and "natural language processing"
+# from being counted as different predictions.
+EVALUATION_ALIASES = {
+    "natural language processing": "nlp",
+    "nlp": "nlp",
+    "retrieval augmented generation": "rag",
+    "rag": "rag",
+    "large language models": "llm",
+    "large language model": "llm",
+    "llms": "llm",
+    "llm": "llm",
+    "application programming interfaces": "api",
+    "application programming interface": "api",
+    "apis": "api",
+    "api": "api",
+    "machine learning": "ml",
+    "ml": "ml",
+    "deep learning": "dl",
+    "dl": "dl",
+    "computer vision": "computer vision",
+    "cv": "computer vision",
+    "artificial intelligence": "ai",
+    "ai": "ai",
+    "sentence bert": "sbert",
+    "sentence berts": "sbert",
+    "sbert": "sbert",
+    "continuous integration continuous deployment": "cicd",
+    "ci cd": "cicd",
+    "cicd": "cicd",
+}
 
 
 def normalize_text(value: str) -> str:
     return " ".join(value.strip().casefold().split())
 
 
-def normalize_items(values: list[str]) -> set[str]:
+def normalize_evaluation_item(value: str) -> str:
+    """Normalize a list item and collapse documented acronym equivalents."""
+    text = unicodedata.normalize("NFKC", str(value)).casefold()
+    text = text.replace("&", " and ")
+    text = re.sub(r"[-/()]", " ", text)
+    text = re.sub(r"[^\w+#.]+", " ", text)
+    text = " ".join(text.split())
+
+    padded = f" {text} "
+    for alias in sorted(EVALUATION_ALIASES, key=len, reverse=True):
+        if f" {alias} " in padded:
+            return EVALUATION_ALIASES[alias]
+    return text
+
+
+def normalize_items(values: Iterable[str]) -> set[str]:
     return {
         normalized
         for value in values
-        if (normalized := normalize_text(str(value)))
+        if (normalized := normalize_evaluation_item(str(value)))
     }
 
 
@@ -90,13 +148,23 @@ def evaluate_job_analysis(
         )
 
     list_scores: dict[str, dict[str, float]] = {}
-    for field in LIST_FIELDS:
+    for field in SCORED_LIST_FIELDS:
         if field not in expected:
             continue
         list_scores[field] = set_precision_recall_f1(
             list(predicted_data.get(field, [])),
             list(expected[field]),
         )
+
+    unscored_fields = {
+        field: {
+            "prediction": list(predicted_data.get(field, [])),
+            "expected_reference": list(expected.get(field, [])),
+            "reason": "Generated recommendation field; excluded from extraction F1.",
+        }
+        for field in UNSCORED_LIST_FIELDS
+        if field in predicted_data or field in expected
+    }
 
     scalar_accuracy = (
         sum(scalar_scores.values()) / len(scalar_scores)
@@ -112,8 +180,10 @@ def evaluate_job_analysis(
     return {
         "scalar_accuracy": scalar_accuracy,
         "macro_list_f1": macro_list_f1,
+        "scored_list_fields": list(SCORED_LIST_FIELDS),
         "scalar_fields": scalar_scores,
         "list_fields": list_scores,
+        "unscored_fields": unscored_fields,
     }
 
 
