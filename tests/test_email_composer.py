@@ -7,7 +7,8 @@ from app.email_composer import (
     memory_to_first_person_claim,
     validate_memory_selection,
 )
-from app.schemas import EmailEvidenceSelection, JobAnalysis
+from app.schemas import EmailEvidenceSelection, JobAnalysis, MatchInsight
+from app.services.llm import generate_application_email_draft
 
 
 MEMORIES = [
@@ -32,6 +33,14 @@ MEMORIES = [
         "content": "The demo candidate prefers concise application emails.",
     },
 ]
+
+
+class FakeSelectionLLM:
+    def __init__(self, responses):
+        self.responses = list(responses)
+
+    def invoke(self, _messages):
+        return self.responses.pop(0)
 
 
 def test_memory_to_first_person_claim_handles_common_candidate_grammar():
@@ -114,3 +123,54 @@ def test_fallback_prioritizes_project_skill_and_avoids_preference():
 
     assert selection.selected_memory_ids == ["project_1", "skill_1", "identity_1"]
     assert "preference_1" not in selection.selected_memory_ids
+
+
+def test_service_uses_llm_only_to_select_memory_ids(monkeypatch):
+    fake_llm = FakeSelectionLLM(
+        [EmailEvidenceSelection(selected_memory_ids=["project_1", "skill_1"])]
+    )
+    monkeypatch.setattr(
+        "app.services.llm.get_email_evidence_selection_llm",
+        lambda: fake_llm,
+    )
+
+    draft = generate_application_email_draft(
+        job_analysis=JobAnalysis(company="Example AI", role="LLM Engineer"),
+        match_insight=MatchInsight(),
+        retrieved_profile_memories=MEMORIES,
+    )
+
+    assert [item.supporting_memory_ids for item in draft.claim_evidence] == [
+        ["project_1"],
+        ["skill_1"],
+    ]
+    assert "I built an agentic workflow with LangGraph." in draft.body
+    assert "I work with Python and FastAPI." in draft.body
+
+
+def test_service_falls_back_safely_after_two_invalid_selections(monkeypatch):
+    fake_llm = FakeSelectionLLM(
+        [
+            EmailEvidenceSelection(selected_memory_ids=["missing"]),
+            EmailEvidenceSelection(selected_memory_ids=["still_missing"]),
+        ]
+    )
+    monkeypatch.setattr(
+        "app.services.llm.get_email_evidence_selection_llm",
+        lambda: fake_llm,
+    )
+
+    draft = generate_application_email_draft(
+        job_analysis=JobAnalysis(company="Example AI", role="ML Engineer"),
+        match_insight=MatchInsight(),
+        retrieved_profile_memories=MEMORIES,
+    )
+
+    assert [item.supporting_memory_ids[0] for item in draft.claim_evidence] == [
+        "project_1",
+        "skill_1",
+        "identity_1",
+    ]
+    assert "preference_1" not in {
+        item.supporting_memory_ids[0] for item in draft.claim_evidence
+    }
