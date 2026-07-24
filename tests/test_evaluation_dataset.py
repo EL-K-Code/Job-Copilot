@@ -100,3 +100,14 @@ def test_summarize_benchmark_reports_coverage() -> None:
     assert summary["number_of_cases"] == 2
     assert summary["unique_tracks"] == 2
     assert summary["difficulties"] == {"hard": 1, "medium": 1}
+
+
+def test_repository_benchmark_has_ten_diverse_cases() -> None:
+    cases = load_benchmark_cases(Path("evaluation/job_offers.sample.jsonl"))
+    summary = summarize_benchmark(cases)
+
+    assert summary["number_of_cases"] == 10
+    assert summary["unique_tracks"] == 10
+    assert summary["difficulties"] == {"hard": 4, "medium": 6}
+    assert summary["languages"] == {"en": 10}
+    assert summary["source_types"] == {"synthetic": 10}
