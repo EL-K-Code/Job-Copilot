@@ -77,6 +77,7 @@ jobs:
             --dataset evaluation/job_offers.v1.jsonl \
             --memories data/profile_memories.example.json \
             --output evaluation/results/email_grounding_review.jsonl \
+            --sampling stratified \
             --limit "$LIMIT"
 
       - name: Publish run summary
@@ -94,24 +95,34 @@ jobs:
               if line.strip()
           ]
           categories = Counter(record.get("category", "unknown") for record in records)
+          variants = Counter(record.get("composition_variant", "unknown") for record in records)
           proposed_claim_count = sum(
               len(record.get("proposed_claims", [])) for record in records
           )
+          evidence_selections = {
+              tuple(record.get("selected_memory_ids", [])) for record in records
+          }
           lines = [
               "# JobCopilot Generated-Email Grounding Review",
               "",
               f"- Review records prepared: {len(records)}",
+              f"- Role families covered: {len(categories)}",
+              f"- Unique evidence selections: {len(evidence_selections)}",
+              f"- Safe composition variants used: {len(variants)}",
               f"- Machine-proposed evidence claims: {proposed_claim_count}",
               "- Candidate profile: fictional public profile",
-              "- Deterministic generation checks: evidence IDs, verbatim claim presence and unsupported amplifier guard",
+              "- Sampling: deterministic category-stratified for 5/10 cases; full dataset for 50",
+              "- Generation architecture: relevance-ranked evidence selection plus deterministic evidence-only composition",
               "- Review status: `pending independent human claim-level annotation`",
               "",
               "This workflow does not calculate an unsupported-claim rate automatically.",
-              "The generated `proposed_claims` are an audit aid, not ground-truth labels. A reviewer must independently verify that every factual candidate claim is covered, then label each claim as `supported`, `unsupported`, or `ambiguous` using only retrieved memory IDs as evidence.",
+              "The generated `proposed_claims` are an audit aid, not ground-truth labels. A reviewer must independently verify claim support, complete ledger coverage and whether the selected evidence is genuinely role-specific.",
               "",
               "## Category coverage",
           ]
           lines.extend(f"- {name}: {count}" for name, count in sorted(categories.items()))
+          lines.extend(["", "## Safe composition variants"])
+          lines.extend(f"- {name}: {count}" for name, count in sorted(variants.items()))
           lines.extend([
               "",
               "Download the JSONL artifact, complete the `claims` arrays, and then run `scripts/summarize_email_grounding_review.py`.",

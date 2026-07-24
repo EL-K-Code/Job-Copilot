@@ -19,6 +19,7 @@ from app.prompts import (
     JOB_ANALYSIS_SYSTEM_PROMPT,
     JOB_MATCH_SYSTEM_PROMPT,
 )
+from app.relevance import rank_memory_records_for_job
 from app.schemas import (
     EmailDraft,
     EmailEvidenceSelection,
@@ -117,49 +118,56 @@ def generate_match_insight(
 def _select_email_evidence(
     job_analysis: JobAnalysis,
     match_insight: MatchInsight,
-    memory_records: list[dict[str, str]],
+    memory_records: list[dict[str, Any]],
 ) -> EmailEvidenceSelection:
-    """Use the LLM only to select retrieved evidence IDs, with a safe fallback."""
+    """Select from auditable relevance-ranked memories, with a safe fallback."""
     structured_llm = get_email_evidence_selection_llm()
+    ranked_records = rank_memory_records_for_job(job_analysis, memory_records)
     messages = [
         SystemMessage(content=EMAIL_DRAFT_SYSTEM_PROMPT),
         HumanMessage(
             content=(
-                "Select the strongest retrieved evidence for a concise application email.\n\n"
+                "Select the strongest and most role-specific retrieved evidence for a concise "
+                "application email. Use relevance_score and aligned_job_terms as deterministic "
+                "audit signals, while checking the underlying memory content.\n\n"
                 "Job analysis:\n"
                 f"{json.dumps(job_analysis.model_dump(), indent=2)}\n\n"
                 "Match insight:\n"
                 f"{json.dumps(match_insight.model_dump(), indent=2)}\n\n"
-                "Retrieved profile-memory records:\n"
-                f"{json.dumps(memory_records, indent=2)}"
+                "Relevance-ranked profile-memory records:\n"
+                f"{json.dumps(ranked_records, indent=2)}"
             )
         ),
     ]
 
     try:
         selection = structured_llm.invoke(messages)
-        validate_memory_selection(selection, memory_records)
+        validate_memory_selection(selection, ranked_records)
         return selection
     except Exception as first_error:  # Structured-output and validation failures.
         repair_message = HumanMessage(
             content=(
                 "The previous evidence selection was invalid. Return only one to three IDs "
-                "that appear exactly in the retrieved memory records. Do not write claims or "
-                "email prose.\n\n"
+                "that appear exactly in the ranked memory records. Prefer positive relevance "
+                "scores, explicit aligned_job_terms and evidence-type diversity. Do not write "
+                "claims or email prose.\n\n"
                 f"Selection error: {first_error}"
             )
         )
         try:
             selection = structured_llm.invoke([*messages, repair_message])
-            validate_memory_selection(selection, memory_records)
+            validate_memory_selection(selection, ranked_records)
             return selection
         except Exception as second_error:
             logger.warning(
-                "Email evidence selection failed twice; using deterministic retrieval-order "
+                "Email evidence selection failed twice; using deterministic relevance-aware "
                 "fallback. Error: %s",
                 second_error,
             )
-            return deterministic_fallback_selection(memory_records)
+            return deterministic_fallback_selection(
+                ranked_records,
+                job_analysis=job_analysis,
+            )
 
 
 def generate_application_email_draft(

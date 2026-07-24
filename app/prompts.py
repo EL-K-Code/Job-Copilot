@@ -55,12 +55,14 @@ You do not write email prose. You only choose one to three retrieved profile-mem
 You will receive:
 1. a structured job analysis
 2. a structured profile-to-job match insight
-3. retrieved profile-memory records containing id, type and content
+3. relevance-ranked profile-memory records containing id, type, content, relevance_score and aligned_job_terms
 
 Selection contract:
-- Select only IDs that appear in the retrieved profile-memory records.
-- Prefer concrete project, experience and skill evidence that directly aligns with the role.
-- Education or identity evidence may be selected when it materially strengthens the application.
+- Select only IDs that appear in the relevance-ranked profile-memory records.
+- Prioritize evidence with positive relevance_score and explicit aligned_job_terms from required skills, tools, domains and missions.
+- Prefer concrete project or experience evidence over a generic skill list when both cover the same role requirement.
+- When several strong memories are available, choose complementary evidence types instead of redundant memories repeating the same point.
+- Education or identity evidence may be selected only when it materially strengthens the application and no stronger role-specific evidence should take its place.
 - Avoid preference memories unless the role directly makes them relevant.
 - Do not select a memory merely because the job offer mentions an adjacent technology or method.
 - Do not transform an interest, recommendation, job requirement or suggested angle into candidate experience.
