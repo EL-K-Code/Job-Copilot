@@ -3,6 +3,7 @@ from pydantic import ValidationError
 
 from app.email_composer import (
     compose_grounded_email_draft,
+    deterministic_composition_variant,
     deterministic_fallback_selection,
     memory_to_first_person_claim,
     validate_memory_selection,
@@ -90,10 +91,13 @@ def test_composer_builds_body_only_from_selected_memory_evidence():
 
     assert draft.subject == "Application — Junior LLM Engineer"
     assert draft.tone == "premium"
+    assert draft.composition_variant in {"direct", "focused", "warm"}
     assert [item.supporting_memory_ids for item in draft.claim_evidence] == [
         ["project_1"],
         ["skill_1"],
     ]
+    assert draft.claim_evidence[1].relevance_score > 0
+    assert "Python" in draft.claim_evidence[1].aligned_job_terms
     assert "I built an agentic workflow with LangGraph." in draft.body
     assert "I work with Python and FastAPI." in draft.body
     assert "early-career" not in draft.body
@@ -118,7 +122,21 @@ def test_every_candidate_fact_in_deterministic_body_comes_from_ledger():
         assert item.claim in draft.body
 
 
-def test_fallback_prioritizes_project_skill_and_avoids_preference():
+def test_composition_variant_is_stable_and_varies_across_offers():
+    job = JobAnalysis(company="Example AI", role="ML Engineer")
+    assert deterministic_composition_variant(job) == deterministic_composition_variant(job)
+
+    variants = {
+        deterministic_composition_variant(
+            JobAnalysis(company=f"Company {index}", role=f"AI Role {index}")
+        )
+        for index in range(20)
+    }
+    assert variants.issubset({"direct", "focused", "warm"})
+    assert len(variants) >= 2
+
+
+def test_fallback_prioritizes_project_skill_and_avoids_preference_without_job():
     selection = deterministic_fallback_selection(MEMORIES, limit=3)
 
     assert selection.selected_memory_ids == ["project_1", "skill_1", "identity_1"]
@@ -166,11 +184,9 @@ def test_service_falls_back_safely_after_two_invalid_selections(monkeypatch):
         retrieved_profile_memories=MEMORIES,
     )
 
-    assert [item.supporting_memory_ids[0] for item in draft.claim_evidence] == [
-        "project_1",
-        "skill_1",
-        "identity_1",
-    ]
-    assert "preference_1" not in {
+    selected_ids = [
         item.supporting_memory_ids[0] for item in draft.claim_evidence
-    }
+    ]
+    assert selected_ids[0] == "identity_1"
+    assert {"project_1", "skill_1"}.issubset(set(selected_ids))
+    assert "preference_1" not in set(selected_ids)
