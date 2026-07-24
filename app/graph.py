@@ -31,10 +31,19 @@ def analyze_job_node(state: JobCopilotState) -> JobCopilotState:
 def retrieve_memory_node(state: JobCopilotState) -> JobCopilotState:
     query = state["retrieval_query"]
     docs = retrieve_profile_context(query, k=5)
-    retrieved_memories = [doc.page_content for doc in docs]
+    retrieved_memory_records = [
+        {
+            "id": str(doc.metadata.get("id", "")).strip(),
+            "type": str(doc.metadata.get("type", "unknown")).strip() or "unknown",
+            "content": doc.page_content,
+        }
+        for doc in docs
+    ]
+    retrieved_memories = [record["content"] for record in retrieved_memory_records]
 
     return {
         "retrieved_memories": retrieved_memories,
+        "retrieved_memory_records": retrieved_memory_records,
     }
 
 
@@ -42,11 +51,11 @@ def generate_match_node(state: JobCopilotState) -> JobCopilotState:
     from app.schemas import JobAnalysis
 
     job_analysis = JobAnalysis(**state["job_analysis"])
-    retrieved_memories = state["retrieved_memories"]
+    retrieved_memory_records = state["retrieved_memory_records"]
 
     match = generate_match_insight(
         job_analysis=job_analysis,
-        retrieved_profile_memories=retrieved_memories,
+        retrieved_profile_memories=retrieved_memory_records,
     )
 
     return {
@@ -59,10 +68,12 @@ def generate_email_node(state: JobCopilotState) -> JobCopilotState:
 
     job_analysis = JobAnalysis(**state["job_analysis"])
     match_insight = MatchInsight(**state["match_insight"])
+    retrieved_memory_records = state["retrieved_memory_records"]
 
     email_draft = generate_application_email_draft(
         job_analysis=job_analysis,
         match_insight=match_insight,
+        retrieved_profile_memories=retrieved_memory_records,
     )
 
     return {
