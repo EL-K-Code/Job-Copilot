@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -110,10 +111,11 @@ def load_profile_vector_store() -> FAISS:
     )
 
 
+@lru_cache(maxsize=1)
 def get_or_create_profile_vector_store() -> FAISS:
     """
     Load a trusted persisted store when explicitly allowed. Otherwise rebuild
-    the in-memory index from the auditable JSON source of truth.
+    the in-memory index once per process from the auditable JSON source of truth.
     """
     index_file = settings.memory_index_path / "index.faiss"
     store_file = settings.memory_index_path / "index.pkl"
@@ -134,6 +136,11 @@ def get_or_create_profile_vector_store() -> FAISS:
         save_profile_vector_store(vector_store)
 
     return vector_store
+
+
+def clear_profile_vector_store_cache() -> None:
+    """Clear the process cache after profile memories are intentionally changed."""
+    get_or_create_profile_vector_store.cache_clear()
 
 
 def retrieve_profile_context_with_scores(
