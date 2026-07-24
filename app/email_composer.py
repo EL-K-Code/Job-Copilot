@@ -78,7 +78,7 @@ def validate_memory_selection(
     selection: EmailEvidenceSelection,
     memory_records: list[dict],
 ) -> None:
-    """Reject unknown IDs and weak generic selections when relevant evidence exists."""
+    """Reject unknown IDs and all generic evidence when aligned evidence exists."""
     available_records = {
         str(record.get("id", "")).strip(): record
         for record in memory_records
@@ -99,17 +99,16 @@ def validate_memory_selection(
         return
 
     selected_records = [available_records[memory_id] for memory_id in selection.selected_memory_ids]
-    if not any(_record_score(record) > 0 for record in selected_records):
+    generic_selected_ids = [
+        str(record.get("id", "")).strip()
+        for record in selected_records
+        if _record_score(record) <= 0
+    ]
+    if generic_selected_ids:
         raise ValueError(
-            "Email evidence selection ignored all memories with explicit offer alignment."
-        )
-
-    if len(positive_records) >= len(selected_records) and any(
-        _record_score(record) <= 0 for record in selected_records
-    ):
-        raise ValueError(
-            "Email evidence selection included generic evidence while enough explicitly aligned "
-            "memories were available."
+            "Email evidence selection included generic zero-score evidence even though "
+            "explicitly aligned memories were available: "
+            f"{generic_selected_ids}. Select fewer claims instead of filling the email."
         )
 
 
@@ -175,7 +174,7 @@ def deterministic_fallback_selection(
     job_analysis: JobAnalysis | None = None,
     limit: int = 3,
 ) -> EmailEvidenceSelection:
-    """Select relevant and type-diverse evidence when model selection fails."""
+    """Select only aligned evidence when available, without artificial claim filling."""
     if limit < 1:
         raise ValueError("Fallback selection limit must be positive.")
 
@@ -183,29 +182,18 @@ def deterministic_fallback_selection(
     positive_records = [record for record in ranked_records if _record_score(record) > 0]
     generic_records = [record for record in ranked_records if _record_score(record) <= 0]
 
+    # A shorter email with one or two explicitly aligned claims is preferable to a
+    # three-claim email padded with generic facts. Generic memories are considered
+    # only when the reranker found no positive alignment at all.
+    candidates = positive_records or generic_records
     selected_ids: list[str] = []
     selected_types: set[str] = set()
-
-    # Explicitly aligned evidence is always exhausted before generic evidence. This
-    # keeps the fallback consistent with validate_memory_selection even when several
-    # high-scoring memories share the same type (for example, three project records).
-    primary_candidates = positive_records or generic_records
     _append_diverse_then_ranked(
-        primary_candidates,
+        candidates,
         selected_ids,
         selected_types,
         limit=limit,
     )
-
-    # Generic evidence may fill missing slots only when fewer aligned memories exist
-    # than the requested limit. It can never displace an available aligned memory.
-    if positive_records and len(selected_ids) < limit:
-        _append_diverse_then_ranked(
-            generic_records,
-            selected_ids,
-            selected_types,
-            limit=limit,
-        )
 
     if not selected_ids:
         raise ValueError("No valid retrieved memory is available for email composition.")
