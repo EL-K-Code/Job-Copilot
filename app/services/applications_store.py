@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime, timezone
+from pathlib import Path
+from tempfile import NamedTemporaryFile
 
 from app.config import settings
 from app.schemas import ApplicationRecord
@@ -24,16 +27,17 @@ def load_application_records() -> list[ApplicationRecord]:
     if not path.exists():
         return []
 
-    with open(path, "r", encoding="utf-8") as f:
-        raw_text = f.read().strip()
-
+    raw_text = path.read_text(encoding="utf-8").strip()
     if not raw_text:
         return []
 
     try:
         raw_data = json.loads(raw_text)
-    except json.JSONDecodeError:
-        return []
+    except json.JSONDecodeError as exc:
+        raise ValueError(
+            f"Application store is not valid JSON: {path}. "
+            "The file was left untouched so it can be inspected or restored."
+        ) from exc
 
     if not isinstance(raw_data, list):
         raise ValueError("applications.json must contain a list.")
@@ -41,17 +45,41 @@ def load_application_records() -> list[ApplicationRecord]:
     return [ApplicationRecord(**item) for item in raw_data]
 
 
-def save_application_records(records: list[ApplicationRecord]) -> None:
-    path = settings.applications_path
+def _atomic_json_write(path: Path, payload: list[dict]) -> None:
+    """Write JSON through a temporary file and atomically replace the target."""
     path.parent.mkdir(parents=True, exist_ok=True)
+    temporary_path: Path | None = None
 
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(
-            [record.model_dump() for record in records],
-            f,
-            indent=2,
-            ensure_ascii=False,
-        )
+    try:
+        with NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=path.parent,
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as temporary_file:
+            json.dump(
+                payload,
+                temporary_file,
+                indent=2,
+                ensure_ascii=False,
+            )
+            temporary_file.flush()
+            os.fsync(temporary_file.fileno())
+            temporary_path = Path(temporary_file.name)
+
+        os.replace(temporary_path, path)
+    finally:
+        if temporary_path is not None and temporary_path.exists():
+            temporary_path.unlink(missing_ok=True)
+
+
+def save_application_records(records: list[ApplicationRecord]) -> None:
+    _atomic_json_write(
+        settings.applications_path,
+        [record.model_dump() for record in records],
+    )
 
 
 def find_existing_application(company: str, role: str) -> ApplicationRecord | None:
