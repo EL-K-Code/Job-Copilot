@@ -1,0 +1,20 @@
+{"id":"ground_001","claim":"The candidate built an agentic workflow with LangGraph.","evidence_ids":["project_1"],"label":"supported"}
+{"id":"ground_002","claim":"The candidate has production experience with Kubernetes.","evidence_ids":["skill_1"],"label":"unsupported"}
+{"id":"ground_003","claim":"The candidate evaluated a matching system with ROC-AUC.","evidence_ids":["experience_1"],"label":"supported"}
+{"id":"ground_004","claim":"The candidate led a team of ten engineers.","evidence_ids":[],"label":"unsupported"}
+{"id":"ground_005","claim":"The candidate has experience with retrieval systems.","evidence_ids":["project_2","skill_2"],"label":"supported"}
+{"id":"ground_006","claim":"The candidate is an expert in distributed databases.","evidence_ids":["education_1"],"label":"unsupported"}
+{"id":"ground_007","claim":"The candidate created a containerized FastAPI service.","evidence_ids":["project_3"],"label":"supported"}
+{"id":"ground_008","claim":"The candidate prefers evidence-grounded application emails.","evidence_ids":["preference_1"],"label":"supported"}
+{"id":"ground_009","claim":"The candidate has extensive commercial MLOps experience.","evidence_ids":["project_3","skill_1"],"label":"ambiguous"}
+{"id":"ground_010","claim":"The candidate performed statistical modeling on operational data.","evidence_ids":["experience_2"],"label":"supported"}
+{"id":"ground_011","claim":"The candidate has a PhD in machine learning.","evidence_ids":["education_1"],"label":"unsupported"}
+{"id":"ground_012","claim":"The candidate has practical NLP and LLM API experience.","evidence_ids":["skill_2"],"label":"supported"}
+{"id":"ground_013","claim":"The candidate deployed models to millions of users.","evidence_ids":["project_3"],"label":"unsupported"}
+{"id":"ground_014","claim":"The candidate has graduate-level training in statistics.","evidence_ids":["education_1"],"label":"supported"}
+{"id":"ground_015","claim":"The candidate specializes exclusively in computer vision.","evidence_ids":["identity_1"],"label":"unsupported"}
+{"id":"ground_016","claim":"The candidate can work with Python and SQL.","evidence_ids":["skill_1"],"label":"supported"}
+{"id":"ground_017","claim":"The candidate designed explicit relevance evaluation for retrieval.","evidence_ids":["project_2"],"label":"supported"}
+{"id":"ground_018","claim":"The candidate has senior-level cloud architecture ownership.","evidence_ids":["project_3"],"label":"ambiguous"}
+{"id":"ground_019","claim":"The candidate performed structured error reviews.","evidence_ids":["experience_1"],"label":"supported"}
+{"id":"ground_020","claim":"The candidate is fluent in five languages.","evidence_ids":[],"label":"unsupported"}

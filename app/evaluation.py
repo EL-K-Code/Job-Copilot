@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from typing import Any
+import math
+from collections import Counter
+from typing import Any, Iterable
 
 from app.schemas import JobAnalysis
 
@@ -21,6 +23,8 @@ LIST_FIELDS = (
     "domain_focus",
     "key_highlights_for_candidate",
 )
+
+GROUNDING_LABELS = ("supported", "unsupported", "ambiguous")
 
 
 def normalize_text(value: str) -> str:
@@ -110,4 +114,135 @@ def evaluate_job_analysis(
         "macro_list_f1": macro_list_f1,
         "scalar_fields": scalar_scores,
         "list_fields": list_scores,
+    }
+
+
+def recall_at_k(
+    ranked_ids: Iterable[str],
+    relevant_ids: Iterable[str],
+    k: int,
+) -> float:
+    if k < 1:
+        raise ValueError("k must be greater than or equal to 1.")
+    relevant = set(relevant_ids)
+    if not relevant:
+        return 1.0
+    retrieved = set(list(ranked_ids)[:k])
+    return len(retrieved & relevant) / len(relevant)
+
+
+def reciprocal_rank(
+    ranked_ids: Iterable[str],
+    relevant_ids: Iterable[str],
+) -> float:
+    relevant = set(relevant_ids)
+    if not relevant:
+        return 1.0
+    for rank, item_id in enumerate(ranked_ids, start=1):
+        if item_id in relevant:
+            return 1.0 / rank
+    return 0.0
+
+
+def ndcg_at_k(
+    ranked_ids: Iterable[str],
+    relevant_ids: Iterable[str],
+    k: int,
+) -> float:
+    if k < 1:
+        raise ValueError("k must be greater than or equal to 1.")
+    relevant = set(relevant_ids)
+    if not relevant:
+        return 1.0
+
+    ranked = list(ranked_ids)[:k]
+    dcg = sum(
+        1.0 / math.log2(rank + 1)
+        for rank, item_id in enumerate(ranked, start=1)
+        if item_id in relevant
+    )
+    ideal_hits = min(len(relevant), k)
+    idcg = sum(1.0 / math.log2(rank + 1) for rank in range(1, ideal_hits + 1))
+    return dcg / idcg if idcg else 0.0
+
+
+def evaluate_retrieval_ranking(
+    ranked_ids: list[str],
+    relevant_ids: list[str],
+    k_values: tuple[int, ...] = (1, 3, 5),
+) -> dict[str, float]:
+    metrics: dict[str, float] = {
+        "mrr": reciprocal_rank(ranked_ids, relevant_ids),
+    }
+    for k in k_values:
+        metrics[f"recall@{k}"] = recall_at_k(ranked_ids, relevant_ids, k)
+        metrics[f"ndcg@{k}"] = ndcg_at_k(ranked_ids, relevant_ids, k)
+    return metrics
+
+
+def evaluate_grounding_labels(
+    predicted_labels: list[str],
+    expected_labels: list[str],
+) -> dict[str, Any]:
+    if len(predicted_labels) != len(expected_labels):
+        raise ValueError("Predicted and expected label lists must have the same length.")
+
+    invalid = {
+        label
+        for label in [*predicted_labels, *expected_labels]
+        if label not in GROUNDING_LABELS
+    }
+    if invalid:
+        raise ValueError(f"Unsupported grounding labels: {sorted(invalid)}")
+
+    total = len(expected_labels)
+    accuracy = (
+        sum(pred == gold for pred, gold in zip(predicted_labels, expected_labels)) / total
+        if total
+        else 0.0
+    )
+
+    per_label: dict[str, dict[str, float]] = {}
+    for label in GROUNDING_LABELS:
+        true_positive = sum(
+            pred == label and gold == label
+            for pred, gold in zip(predicted_labels, expected_labels)
+        )
+        false_positive = sum(
+            pred == label and gold != label
+            for pred, gold in zip(predicted_labels, expected_labels)
+        )
+        false_negative = sum(
+            pred != label and gold == label
+            for pred, gold in zip(predicted_labels, expected_labels)
+        )
+        precision = (
+            true_positive / (true_positive + false_positive)
+            if true_positive + false_positive
+            else 0.0
+        )
+        recall = (
+            true_positive / (true_positive + false_negative)
+            if true_positive + false_negative
+            else 0.0
+        )
+        f1 = (
+            2 * precision * recall / (precision + recall)
+            if precision + recall
+            else 0.0
+        )
+        per_label[label] = {
+            "precision": precision,
+            "recall": recall,
+            "f1": f1,
+        }
+
+    macro_f1 = sum(item["f1"] for item in per_label.values()) / len(per_label)
+    expected_counts = Counter(expected_labels)
+
+    return {
+        "accuracy": accuracy,
+        "macro_f1": macro_f1,
+        "per_label": per_label,
+        "expected_distribution": dict(expected_counts),
     }

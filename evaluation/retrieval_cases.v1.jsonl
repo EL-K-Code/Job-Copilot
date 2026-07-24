@@ -1,0 +1,20 @@
+{"id":"retrieval_001","query":"LangGraph agentic AI tool calling human approval","relevant_memory_ids":["project_1","skill_2"]}
+{"id":"retrieval_002","query":"semantic retrieval FAISS sentence embeddings ranking evaluation","relevant_memory_ids":["project_2","skill_2"]}
+{"id":"retrieval_003","query":"FastAPI Docker model serving deployment","relevant_memory_ids":["project_3","skill_1"]}
+{"id":"retrieval_004","query":"ROC-AUC threshold analysis machine learning evaluation","relevant_memory_ids":["experience_1"]}
+{"id":"retrieval_005","query":"data cleaning exploratory analysis statistical modeling","relevant_memory_ids":["experience_2"]}
+{"id":"retrieval_006","query":"Python SQL PyTorch scikit-learn engineering skills","relevant_memory_ids":["skill_1"]}
+{"id":"retrieval_007","query":"NLP LLM API RAG evaluation data pipeline","relevant_memory_ids":["skill_2"]}
+{"id":"retrieval_008","query":"reliable applied AI early career engineer","relevant_memory_ids":["identity_1"]}
+{"id":"retrieval_009","query":"graduate data science statistics software engineering education","relevant_memory_ids":["education_1"]}
+{"id":"retrieval_010","query":"write concise application email using only supported profile evidence","relevant_memory_ids":["preference_1"]}
+{"id":"retrieval_011","query":"agent orchestration with structured outputs and supervised actions","relevant_memory_ids":["project_1"]}
+{"id":"retrieval_012","query":"search relevance benchmark and explicit retrieval evaluation","relevant_memory_ids":["project_2"]}
+{"id":"retrieval_013","query":"containerized REST API for machine learning predictions","relevant_memory_ids":["project_3"]}
+{"id":"retrieval_014","query":"model matching system robustness and decision threshold review","relevant_memory_ids":["experience_1"]}
+{"id":"retrieval_015","query":"operational dataset quality and statistical analysis","relevant_memory_ids":["experience_2"]}
+{"id":"retrieval_016","query":"PyTorch FastAPI Docker Git stack","relevant_memory_ids":["skill_1","project_3"]}
+{"id":"retrieval_017","query":"RAG with FAISS and sentence embeddings","relevant_memory_ids":["project_2","skill_2"]}
+{"id":"retrieval_018","query":"human supervised AI agent for job applications","relevant_memory_ids":["project_1","preference_1"]}
+{"id":"retrieval_019","query":"candidate background in statistics data science and software","relevant_memory_ids":["education_1"]}
+{"id":"retrieval_020","query":"evaluation metrics for applied machine learning systems","relevant_memory_ids":["experience_1","skill_2"]}
