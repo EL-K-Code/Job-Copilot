@@ -27,7 +27,10 @@ class Settings:
 
     memory_index_dir: str = os.getenv("MEMORY_INDEX_DIR", "data/faiss_index")
     applications_file: str = os.getenv("APPLICATIONS_FILE", "data/applications.json")
-    profile_memories_file: str = os.getenv("PROFILE_MEMORIES_FILE", "data/profile_memories.json")
+    profile_memories_file: str = os.getenv(
+        "PROFILE_MEMORIES_FILE",
+        "data/profile_memories.example.json",
+    )
 
     default_timezone: str = os.getenv("DEFAULT_TIMEZONE", "Europe/Paris")
     allow_trusted_faiss_deserialization: bool = _env_flag(
