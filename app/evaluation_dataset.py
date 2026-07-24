@@ -73,7 +73,15 @@ def validate_benchmark_case(raw_case: Any, line_number: int | None = None) -> di
         ) from exc
 
     for field in SCALAR_FIELDS:
-        _require_nonempty_string(validated_expected[field], f"expected.{field}", case_id)
+        validated_expected[field] = _require_nonempty_string(
+            validated_expected[field], f"expected.{field}", case_id
+        )
+
+    validated_expected["profile_summary"] = _require_nonempty_string(
+        validated_expected["profile_summary"],
+        "expected.profile_summary",
+        case_id,
+    )
 
     for field in LIST_FIELDS:
         values = validated_expected[field]
