@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       case_count:
-        description: Number of job offers to evaluate
+        description: Benchmark suite to run
         required: true
         default: "5"
         type: choice
@@ -58,9 +58,13 @@ jobs:
         shell: bash
         run: |
           if [ "${{ inputs.case_count }}" = "50" ]; then
-            python scripts/evaluate_job_extraction.py
+            python scripts/evaluate_job_extraction.py \
+              --dataset evaluation/job_offers.v1.jsonl \
+              --benchmark-version 1.0.0
           else
-            python scripts/evaluate_job_extraction.py --limit "${{ inputs.case_count }}"
+            python scripts/evaluate_job_extraction.py \
+              --dataset evaluation/job_offers.smoke.v1.jsonl \
+              --benchmark-version smoke-1.0.0
           fi
 
       - name: Publish run summary
@@ -78,11 +82,14 @@ jobs:
               "# JobCopilot Benchmark",
               "",
               f"- Cases evaluated: {aggregate.get('number_of_cases', 0)}",
+              f"- Dataset: `{report.get('dataset', 'unknown')}`",
               f"- Model: `{report.get('model', 'unknown')}`",
               f"- Scalar accuracy: {aggregate.get('mean_scalar_accuracy', 0.0):.4f}",
-              f"- Macro list F1: {aggregate.get('mean_macro_list_f1', 0.0):.4f}",
-              f"- Benchmark version: `{report.get('benchmark_version', 'unknown')}`",
+              f"- Macro extraction-list F1: {aggregate.get('mean_macro_list_f1', 0.0):.4f}",
+              f"- Dataset version: `{report.get('benchmark_version', 'unknown')}`",
+              f"- Evaluation protocol: `{report.get('evaluation_protocol_version', 'unknown')}`",
               "",
+              "`key_highlights_for_candidate` is a generated recommendation field and is excluded from extraction F1.",
               "The complete case-level report is available in the workflow artifact.",
           ]
 
