@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
+from typing import Any
+
 from langgraph.graph import START, END, StateGraph
 
 from app.memory import retrieve_profile_context
@@ -11,14 +14,14 @@ from app.services.llm import (
 from app.state import JobCopilotState
 
 
-_EMAIL_RETRIEVAL_K = 8
+EMAIL_RETRIEVAL_K = 8
+# Backward-compatible private alias used by earlier callers.
+_EMAIL_RETRIEVAL_K = EMAIL_RETRIEVAL_K
 
 
-def analyze_job_node(state: JobCopilotState) -> JobCopilotState:
-    job_text = state["job_text"]
-    job_analysis = analyze_job_offer(job_text)
-
-    retrieval_query = (
+def build_retrieval_query(job_analysis: Any) -> str:
+    """Build the shared profile-memory query from a structured job analysis."""
+    return (
         f"{job_analysis.role}. "
         f"Missions: {', '.join(job_analysis.missions_summary)}. "
         f"Required skills: {', '.join(job_analysis.required_skills)}. "
@@ -27,27 +30,43 @@ def analyze_job_node(state: JobCopilotState) -> JobCopilotState:
         f"Domain focus: {', '.join(job_analysis.domain_focus)}."
     )
 
+
+def memory_documents_to_records(documents: Iterable[Any]) -> list[dict[str, Any]]:
+    """Convert retrieved documents into auditable memory records."""
+    records: list[dict[str, Any]] = []
+    for document in documents:
+        metadata = dict(getattr(document, "metadata", {}) or {})
+        record: dict[str, Any] = {
+            "id": str(metadata.pop("id", "")).strip(),
+            "type": str(metadata.pop("type", "unknown")).strip() or "unknown",
+            "content": str(getattr(document, "page_content", "")).strip(),
+        }
+        record.update(
+            {
+                str(key): value
+                for key, value in metadata.items()
+                if value is not None and str(value).strip()
+            }
+        )
+        if record["content"]:
+            records.append(record)
+    return records
+
+
+def analyze_job_node(state: JobCopilotState) -> JobCopilotState:
+    job_text = state["job_text"]
+    job_analysis = analyze_job_offer(job_text)
+
     return {
         "job_analysis": job_analysis.model_dump(),
-        "retrieval_query": retrieval_query,
+        "retrieval_query": build_retrieval_query(job_analysis),
     }
 
 
 def retrieve_memory_node(state: JobCopilotState) -> JobCopilotState:
     query = state["retrieval_query"]
-    docs = retrieve_profile_context(query, k=_EMAIL_RETRIEVAL_K)
-    retrieved_memory_records = []
-    for doc in docs:
-        record = {
-            str(key): value
-            for key, value in doc.metadata.items()
-            if value is not None
-        }
-        record["id"] = str(record.get("id", "")).strip()
-        record["type"] = str(record.get("type", "unknown")).strip() or "unknown"
-        record["content"] = doc.page_content
-        retrieved_memory_records.append(record)
-
+    docs = retrieve_profile_context(query, k=EMAIL_RETRIEVAL_K)
+    retrieved_memory_records = memory_documents_to_records(docs)
     retrieved_memories = [record["content"] for record in retrieved_memory_records]
 
     return {
