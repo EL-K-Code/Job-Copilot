@@ -4,10 +4,8 @@ import json
 import logging
 from typing import Any
 
-from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from app.config import settings
 from app.email_composer import (
     compose_grounded_email_draft,
     deterministic_fallback_selection,
@@ -26,33 +24,23 @@ from app.schemas import (
     JobAnalysis,
     MatchInsight,
 )
+from app.services.model_provider import get_structured_chat_model
 
 
 logger = logging.getLogger(__name__)
 MemoryInput = dict[str, Any] | str
 
 
-def get_base_llm() -> ChatAnthropic:
-    return ChatAnthropic(
-        model=settings.anthropic_model,
-        temperature=0,
-        api_key=settings.require_anthropic_api_key(),
-    )
-
-
 def get_job_analysis_llm():
-    llm = get_base_llm()
-    return llm.with_structured_output(JobAnalysis)
+    return get_structured_chat_model(JobAnalysis)
 
 
 def get_match_insight_llm():
-    llm = get_base_llm()
-    return llm.with_structured_output(MatchInsight)
+    return get_structured_chat_model(MatchInsight)
 
 
 def get_email_evidence_selection_llm():
-    llm = get_base_llm()
-    return llm.with_structured_output(EmailEvidenceSelection)
+    return get_structured_chat_model(EmailEvidenceSelection)
 
 
 def get_email_draft_llm():
