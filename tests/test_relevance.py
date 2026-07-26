@@ -124,3 +124,65 @@ def test_fallback_uses_relevance_and_evidence_type_diversity():
     assert selection.selected_memory_ids[0] == "project_2"
     assert "skill_2" in selection.selected_memory_ids
     assert "identity_1" not in selection.selected_memory_ids
+
+
+def test_responsible_ai_topics_align_without_education_padding():
+    job = JobAnalysis(
+        company="Kairo Tech",
+        role="Responsible AI Engineer Intern",
+        missions_summary=[
+            "Design evaluation protocols",
+            "Measure model failure modes",
+            "Report reliability trade-offs",
+        ],
+        required_skills=["Python", "model evaluation", "error analysis"],
+        preferred_skills=["calibration"],
+        tools_and_stack=["Python", "PyTorch", "scikit-learn"],
+        domain_focus=["AI evaluation", "reliability", "responsible AI"],
+    )
+    memories = [
+        {
+            "id": "project_agent_human_supervision",
+            "type": "project",
+            "topic": "human_supervision",
+            "content": (
+                "The demo candidate implemented human-supervised tool calls "
+                "in an agentic workflow."
+            ),
+        },
+        {
+            "id": "skill_evaluation_metrics",
+            "type": "skill",
+            "topic": "evaluation_metrics",
+            "content": (
+                "The demo candidate has practical experience with machine learning "
+                "evaluation metrics."
+            ),
+        },
+        {
+            "id": "education_software_engineering",
+            "type": "education",
+            "topic": "software_engineering",
+            "content": (
+                "The demo candidate completed graduate-level training in software engineering."
+            ),
+        },
+    ]
+
+    ranked = rank_memory_records_for_job(job, memories)
+    score_by_id = {
+        record["id"]: record["relevance_score"]
+        for record in ranked
+    }
+
+    assert score_by_id["project_agent_human_supervision"] > 0
+    assert score_by_id["skill_evaluation_metrics"] > 0
+    assert score_by_id["education_software_engineering"] == 0
+
+    selection = deterministic_fallback_selection(ranked, limit=3)
+
+    assert set(selection.selected_memory_ids) == {
+        "project_agent_human_supervision",
+        "skill_evaluation_metrics",
+    }
+    validate_memory_selection(selection, ranked)
