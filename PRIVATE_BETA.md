@@ -1,6 +1,6 @@
 # JobCopilot Private Beta
 
-The private beta entrypoint adds a user-scoped filesystem workspace and password-gated Streamlit UI without changing the legacy local MVP.
+The private beta entrypoint adds a user-scoped filesystem workspace, password-gated Streamlit UI and tenant-safe Agent Chat without changing the legacy local MVP.
 
 ## What is isolated
 
@@ -16,6 +16,8 @@ data/users/<user_id>/
 ```
 
 The application resolves these paths from a validated `user_id`. Path separators, traversal sequences and unsafe identifiers are rejected.
+
+Agent Chat uses a separate tool set, LangGraph instance, in-memory checkpointer and namespaced conversation thread for each authenticated user. The user ID is bound in Python and is not exposed in the model's tool schemas.
 
 ## Enable private beta authentication
 
@@ -43,7 +45,20 @@ streamlit run app/ui/private_beta_app.py \
   --server.port 8501
 ```
 
-The user uploads a verified atomic profile-memory JSON during onboarding. Job analysis, FAISS retrieval, application persistence, Gmail drafts and Calendar events then use that authenticated user's workspace only.
+The user uploads a verified atomic profile-memory JSON during onboarding. Job analysis, FAISS retrieval, application persistence, Agent Chat, Gmail drafts and Calendar events then use that authenticated user's workspace only.
+
+## Tenant-safe Agent Chat
+
+The Agent Chat tab can:
+
+- analyze a job against the authenticated user's profile;
+- list and save applications in that user's workspace;
+- prepare Gmail drafts and Calendar reminders using that user's Google token;
+- perform external actions only after explicit confirmation.
+
+The language model cannot supply or change a `user_id`. Every tool is constructed as a closure already bound to the authenticated account. Alice and Bob also receive different agent graphs and different in-memory checkpoints, so a thread-ID collision cannot cross tenant boundaries.
+
+Chat history is currently process-local. Restarting the server clears conversations, and the beta does not yet provide durable encrypted chat-history storage.
 
 ## Google connection
 
@@ -65,6 +80,4 @@ The Settings page supports:
 
 ## Current boundary
 
-The private beta entrypoint intentionally excludes Agent Chat for now. The current global conversational agent binds static tools and has not yet completed user-context injection through every tool call. The deterministic application workflow is tenant-scoped and covered by cross-user isolation tests.
-
-This is a private engineering beta, not a production identity platform. Deployment behind the public internet still requires HTTPS, secure secret management, rate limiting, persistent database-backed sessions and a production authentication provider.
+This is a private engineering beta, not a production identity platform. Deployment behind the public internet still requires HTTPS, secure secret management, rate limiting, persistent database-backed sessions, encrypted durable chat storage and a production authentication provider.
