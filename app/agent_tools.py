@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 from uuid import uuid4
 
-from langchain_core.tools import tool
+from langchain_core.tools import BaseTool, tool
 
 from app.services.applications_store import (
     add_application_record,
@@ -12,6 +12,7 @@ from app.services.applications_store import (
     has_existing_reminder,
     load_application_records,
 )
+from app.tenancy import normalize_user_id
 from app.tools.calendar_tools import (
     build_followup_event_payload,
     create_followup_event,
@@ -19,172 +20,204 @@ from app.tools.calendar_tools import (
 from app.tools.gmail_tools import create_gmail_draft
 
 
-@tool
-def run_jobcopilot_pipeline_tool(job_text: str) -> dict[str, Any]:
+def build_agent_tools(user_id: str | None = None) -> list[BaseTool]:
     """
-    Run the full JobCopilot pipeline on a job offer:
-    analyze the job, retrieve profile memory, generate match insight,
-    and draft a tailored application email.
-    """
-    from app.graph import jobcopilot_graph
+    Build one tool set bound to exactly one authenticated workspace.
 
-    result = jobcopilot_graph.invoke(
-        {"job_text": job_text},
-        config={
-            "configurable": {
-                "thread_id": f"agent-jobcopilot-pipeline-{uuid4()}"
+    The bound user ID is intentionally absent from every public tool schema, so the
+    language model cannot select, replace or spoof the tenant at runtime.
+    """
+    bound_user_id = normalize_user_id(user_id) if user_id is not None else None
+
+    @tool
+    def run_jobcopilot_pipeline_tool(job_text: str) -> dict[str, Any]:
+        """
+        Run the full JobCopilot pipeline on a job offer using the current user's
+        private profile memory, then return the structured analysis, match and email.
+        """
+        from app.graph import jobcopilot_graph
+
+        state: dict[str, Any] = {"job_text": job_text}
+        if bound_user_id is not None:
+            state["user_id"] = bound_user_id
+
+        result = jobcopilot_graph.invoke(
+            state,
+            config={
+                "configurable": {
+                    "thread_id": (
+                        f"agent-jobcopilot-pipeline-{bound_user_id or 'local'}-{uuid4()}"
+                    )
+                }
+            },
+        )
+
+        return {
+            "job_analysis": result["job_analysis"],
+            "retrieved_memories": result["retrieved_memories"],
+            "match_insight": result["match_insight"],
+            "email_draft": result["email_draft"],
+        }
+
+    @tool
+    def create_gmail_draft_tool(
+        to: str,
+        subject: str,
+        body: str,
+        confirmed: bool = False,
+    ) -> dict[str, Any]:
+        """
+        Create a Gmail draft in the current user's connected Google account only
+        after explicit confirmation of the exact recipient, subject and body.
+        """
+        if not confirmed:
+            return {
+                "status": "confirmation_required",
+                "message": (
+                    "Explicit user confirmation is required before creating the Gmail draft."
+                ),
+                "preview": {
+                    "to": to,
+                    "subject": subject,
+                    "body": body,
+                },
             }
-        },
-    )
 
-    return {
-        "job_analysis": result["job_analysis"],
-        "retrieved_memories": result["retrieved_memories"],
-        "match_insight": result["match_insight"],
-        "email_draft": result["email_draft"],
-    }
-
-
-@tool
-def create_gmail_draft_tool(
-    to: str,
-    subject: str,
-    body: str,
-    confirmed: bool = False,
-) -> dict[str, Any]:
-    """
-    Create a Gmail draft only after the user explicitly confirms the exact
-    recipient, subject and body. Set confirmed=true only after confirmation.
-    """
-    if not confirmed:
+        result = create_gmail_draft(
+            to=to,
+            subject=subject,
+            body=body,
+            user_id=bound_user_id,
+        )
         return {
-            "status": "confirmation_required",
-            "message": "Explicit user confirmation is required before creating the Gmail draft.",
-            "preview": {
-                "to": to,
-                "subject": subject,
-                "body": body,
-            },
+            "status": "created",
+            "draft": result,
         }
 
-    result = create_gmail_draft(
-        to=to,
-        subject=subject,
-        body=body,
-    )
-    return {
-        "status": "created",
-        "draft": result,
-    }
+    @tool
+    def create_followup_reminder_tool(
+        company: str,
+        role: str,
+        followup_date: str,
+        confirmed: bool = False,
+    ) -> dict[str, Any]:
+        """
+        Create a Calendar follow-up in the current user's connected Google account
+        only after explicit confirmation. followup_date must be YYYY-MM-DD.
+        """
+        if not confirmed:
+            return {
+                "status": "confirmation_required",
+                "message": (
+                    "Explicit user confirmation is required before creating the Calendar event."
+                ),
+                "preview": {
+                    "company": company,
+                    "role": role,
+                    "followup_date": followup_date,
+                },
+            }
 
+        if has_existing_reminder(
+            company=company,
+            role=role,
+            reminder_date=followup_date,
+            user_id=bound_user_id,
+        ):
+            return {
+                "status": "duplicate",
+                "message": "A saved application already has this same reminder date.",
+            }
 
-@tool
-def create_followup_reminder_tool(
-    company: str,
-    role: str,
-    followup_date: str,
-    confirmed: bool = False,
-) -> dict[str, Any]:
-    """
-    Create a Google Calendar follow-up reminder only after the user explicitly
-    confirms the company, role and date. followup_date must be YYYY-MM-DD.
-    """
-    if not confirmed:
+        payload = build_followup_event_payload(
+            company=company,
+            role=role,
+            followup_date=followup_date,
+        )
+
+        event_result = create_followup_event(
+            **payload,
+            user_id=bound_user_id,
+        )
+
         return {
-            "status": "confirmation_required",
-            "message": "Explicit user confirmation is required before creating the Calendar event.",
-            "preview": {
-                "company": company,
-                "role": role,
-                "followup_date": followup_date,
-            },
+            "status": "created",
+            "company": company,
+            "role": role,
+            "followup_date": followup_date,
+            "calendar_event": event_result,
         }
 
-    if has_existing_reminder(
-        company=company,
-        role=role,
-        reminder_date=followup_date,
-    ):
+    @tool
+    def save_application_record_tool(
+        company: str,
+        role: str,
+        email_subject: str = "",
+        email_body: str = "",
+        reminder_date: str = "",
+        notes: str = "",
+    ) -> dict[str, Any]:
+        """Save an application in the current user's private workspace."""
+        existing = find_existing_application(
+            company=company,
+            role=role,
+            user_id=bound_user_id,
+        )
+
+        if existing:
+            return {
+                "status": "duplicate",
+                "message": "Application already exists.",
+                "existing_record": existing.model_dump(),
+            }
+
+        record = create_application_record(
+            company=company,
+            role=role,
+            email_subject=email_subject,
+            email_body=email_body,
+            reminder_date=reminder_date,
+            notes=notes,
+            source="agent",
+            status="drafted",
+        )
+
+        saved = add_application_record(record, user_id=bound_user_id)
+
+        if not saved:
+            return {
+                "status": "duplicate",
+                "message": "Application already exists.",
+            }
+
         return {
-            "status": "duplicate",
-            "message": "A saved application already has this same reminder date.",
+            "status": "saved",
+            "record": record.model_dump(),
         }
 
-    payload = build_followup_event_payload(
-        company=company,
-        role=role,
-        followup_date=followup_date,
-    )
+    @tool
+    def list_saved_applications_tool() -> list[dict[str, Any]]:
+        """List applications from the current user's private workspace only."""
+        return [
+            record.model_dump()
+            for record in load_application_records(user_id=bound_user_id)
+        ]
 
-    event_result = create_followup_event(**payload)
-
-    return {
-        "status": "created",
-        "company": company,
-        "role": role,
-        "followup_date": followup_date,
-        "calendar_event": event_result,
-    }
-
-
-@tool
-def save_application_record_tool(
-    company: str,
-    role: str,
-    email_subject: str = "",
-    email_body: str = "",
-    reminder_date: str = "",
-    notes: str = "",
-) -> dict[str, Any]:
-    """
-    Save a job application record locally if it does not already exist.
-    """
-    existing = find_existing_application(company=company, role=role)
-
-    if existing:
-        return {
-            "status": "duplicate",
-            "message": "Application already exists.",
-            "existing_record": existing.model_dump(),
-        }
-
-    record = create_application_record(
-        company=company,
-        role=role,
-        email_subject=email_subject,
-        email_body=email_body,
-        reminder_date=reminder_date,
-        notes=notes,
-        source="agent",
-        status="drafted",
-    )
-
-    saved = add_application_record(record)
-
-    if not saved:
-        return {
-            "status": "duplicate",
-            "message": "Application already exists.",
-        }
-
-    return {
-        "status": "saved",
-        "record": record.model_dump(),
-    }
+    return [
+        run_jobcopilot_pipeline_tool,
+        create_gmail_draft_tool,
+        create_followup_reminder_tool,
+        save_application_record_tool,
+        list_saved_applications_tool,
+    ]
 
 
-@tool
-def list_saved_applications_tool() -> list[dict[str, Any]]:
-    """
-    List saved application records.
-    """
-    return [record.model_dump() for record in load_application_records()]
-
-
-AGENT_TOOLS = [
+# Backward-compatible local tool set used by the original single-user app.
+AGENT_TOOLS = build_agent_tools()
+(
     run_jobcopilot_pipeline_tool,
     create_gmail_draft_tool,
     create_followup_reminder_tool,
     save_application_record_tool,
     list_saved_applications_tool,
-]
+) = AGENT_TOOLS
