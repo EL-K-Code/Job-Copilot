@@ -29,7 +29,7 @@ class Settings:
     applications_file: str = os.getenv("APPLICATIONS_FILE", "data/applications.json")
     profile_memories_file: str = os.getenv(
         "PROFILE_MEMORIES_FILE",
-        "data/profile_memories.example.json",
+        "data/profile_memories.atomic.json",
     )
 
     default_timezone: str = os.getenv("DEFAULT_TIMEZONE", "Europe/Paris")
