@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+import logging
 from typing import Any
 
 from langchain_anthropic import ChatAnthropic
@@ -11,6 +12,7 @@ from langchain_openai import ChatOpenAI
 from app.config import settings
 
 SUPPORTED_LLM_PROVIDERS = {"anthropic", "openai"}
+logger = logging.getLogger(__name__)
 
 
 def normalize_provider_name(value: str) -> str:
@@ -36,10 +38,43 @@ def configured_provider_chain() -> tuple[str, ...]:
     return (primary, fallback)
 
 
+def provider_has_api_key(provider: str) -> bool:
+    normalized = normalize_provider_name(provider)
+    if normalized == "openai":
+        return bool(settings.openai_api_key.strip())
+    return bool(settings.anthropic_api_key.strip())
+
+
+def active_provider_chain() -> tuple[str, ...]:
+    """
+    Return the configured chain while allowing an unavailable optional fallback.
+
+    A missing primary key is always an error. A missing fallback key disables only that
+    fallback, which keeps local and GitHub deployments usable with one provider.
+    """
+    configured = configured_provider_chain()
+    primary, *fallbacks = configured
+    if not provider_has_api_key(primary):
+        if primary == "openai":
+            settings.require_openai_api_key()
+        settings.require_anthropic_api_key()
+
+    active = [primary]
+    for fallback in fallbacks:
+        if provider_has_api_key(fallback):
+            active.append(fallback)
+        else:
+            logger.warning(
+                "Configured LLM fallback '%s' has no API key and will be skipped.",
+                fallback,
+            )
+    return tuple(active)
+
+
 def configured_model_label() -> str:
     """Return an auditable provider/model label for reports and diagnostics."""
     labels = []
-    for provider in configured_provider_chain():
+    for provider in active_provider_chain():
         model = settings.openai_model if provider == "openai" else settings.anthropic_model
         labels.append(f"{provider}:{model}")
     return " -> ".join(labels)
@@ -75,7 +110,7 @@ def get_structured_chat_model(schema: type[Any]) -> Runnable:
     """Return a structured-output runnable with optional cross-provider fallback."""
     models = [
         build_chat_model(provider).with_structured_output(schema)
-        for provider in configured_provider_chain()
+        for provider in active_provider_chain()
     ]
     return _with_fallbacks(models)
 
@@ -84,6 +119,6 @@ def get_tool_calling_chat_model(tools: list[BaseTool]) -> Runnable:
     """Return a tool-bound agent model with optional cross-provider fallback."""
     models = [
         build_chat_model(provider).bind_tools(tools)
-        for provider in configured_provider_chain()
+        for provider in active_provider_chain()
     ]
     return _with_fallbacks(models)
