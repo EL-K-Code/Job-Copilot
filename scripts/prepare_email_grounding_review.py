@@ -23,7 +23,11 @@ from app.graph import (
 )
 from app.memory import load_profile_memories, retrieve_profile_context
 from app.schemas import JobAnalysis
-
+from app.services.llm_telemetry import (
+    capture_llm_telemetry,
+    serialize_llm_events,
+    summarize_llm_events,
+)
 
 ExecutionMode = str
 
@@ -48,13 +52,7 @@ def load_jsonl(path: Path) -> list[dict[str, Any]]:
 
 
 def run_isolated_grounding_case(case: dict[str, Any]) -> dict[str, Any]:
-    """
-    Run the grounding subsystem without an LLM call.
-
-    The synthetic benchmark already contains a frozen structured job annotation. Using it
-    isolates retrieval, deterministic evidence selection and deterministic composition from
-    job-extraction quality and provider billing state.
-    """
+    """Run retrieval and deterministic composition with no paid LLM call."""
     expected = case.get("expected")
     if not isinstance(expected, dict):
         raise ValueError(f"{case.get('id', 'case')} has no structured expected annotation.")
@@ -81,12 +79,16 @@ def run_isolated_grounding_case(case: dict[str, Any]) -> dict[str, Any]:
         "retrieved_memories": [record["content"] for record in retrieved_records],
         "retrieved_memory_records": retrieved_records,
         "email_draft": email_draft.model_dump(),
+        "_llm_telemetry": [],
     }
 
 
 def run_end_to_end_case(case: dict[str, Any]) -> dict[str, Any]:
-    """Run the complete product graph, including Anthropic-backed extraction and matching."""
-    return jobcopilot_graph.invoke({"job_text": case["job_text"]})
+    """Run the complete product graph and capture the provider used per call."""
+    with capture_llm_telemetry() as events:
+        result = jobcopilot_graph.invoke({"job_text": case["job_text"]})
+    result["_llm_telemetry"] = serialize_llm_events(events)
+    return result
 
 
 def build_review_record(
@@ -113,6 +115,7 @@ def build_review_record(
         for claim in proposed_claims
         for memory_id in claim.get("supporting_memory_ids", [])
     ]
+    telemetry = list(result.get("_llm_telemetry", []))
     return {
         "job_id": case["id"],
         "language": case.get("language", "unknown"),
@@ -126,6 +129,8 @@ def build_review_record(
         "selected_memory_ids": selected_memory_ids,
         "retrieved_memories": retrieved_records,
         "proposed_claims": proposed_claims,
+        "llm_telemetry": telemetry,
+        "llm_telemetry_summary": summarize_llm_events(telemetry),
         "claims": [],
         "review_status": "pending",
         "review_instructions": (
@@ -143,6 +148,36 @@ def write_json(path: Path, payload: dict[str, Any]) -> None:
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
+def _manifest_payload(
+    *,
+    records: list[dict[str, Any]],
+    errors: list[dict[str, Any]],
+    requested_jobs: int,
+    execution_mode: ExecutionMode,
+    output: Path,
+    errors_output: Path,
+    final: bool,
+) -> dict[str, Any]:
+    telemetry = [
+        event
+        for record in records
+        for event in record.get("llm_telemetry", [])
+    ]
+    complete = not errors and len(records) == requested_jobs
+    return {
+        "status": "complete" if final and complete else ("partial" if errors else "running"),
+        "execution_mode": execution_mode,
+        "requested_jobs": requested_jobs,
+        "completed_jobs": len(records),
+        "failed_jobs": len(errors),
+        "last_completed_job_id": records[-1]["job_id"] if records else None,
+        "failed_job_id": errors[-1]["job_id"] if errors else None,
+        "provider_telemetry": summarize_llm_events(telemetry),
+        "output": str(output),
+        "errors_output": str(errors_output),
+    }
+
+
 def prepare_records(
     *,
     cases: list[dict[str, Any]],
@@ -155,7 +190,7 @@ def prepare_records(
     execution_mode: ExecutionMode,
     memory_by_content: dict[str, dict[str, Any]],
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    """Generate records incrementally so completed cases survive provider or case failures."""
+    """Generate incrementally so completed cases survive provider failures."""
     output.parent.mkdir(parents=True, exist_ok=True)
     errors_output.parent.mkdir(parents=True, exist_ok=True)
     records: list[dict[str, Any]] = []
@@ -194,104 +229,46 @@ def prepare_records(
             finally:
                 write_json(
                     manifest_output,
-                    {
-                        "status": "partial" if errors else "running",
-                        "execution_mode": execution_mode,
-                        "requested_jobs": len(cases),
-                        "completed_jobs": len(records),
-                        "failed_jobs": len(errors),
-                        "last_completed_job_id": records[-1]["job_id"] if records else None,
-                        "failed_job_id": errors[-1]["job_id"] if errors else None,
-                        "output": str(output),
-                        "errors_output": str(errors_output),
-                    },
+                    _manifest_payload(
+                        records=records,
+                        errors=errors,
+                        requested_jobs=len(cases),
+                        execution_mode=execution_mode,
+                        output=output,
+                        errors_output=errors_output,
+                        final=False,
+                    ),
                 )
 
     write_json(
         manifest_output,
-        {
-            "status": "complete" if not errors and len(records) == len(cases) else "partial",
-            "execution_mode": execution_mode,
-            "requested_jobs": len(cases),
-            "completed_jobs": len(records),
-            "failed_jobs": len(errors),
-            "last_completed_job_id": records[-1]["job_id"] if records else None,
-            "failed_job_id": errors[-1]["job_id"] if errors else None,
-            "output": str(output),
-            "errors_output": str(errors_output),
-        },
+        _manifest_payload(
+            records=records,
+            errors=errors,
+            requested_jobs=len(cases),
+            execution_mode=execution_mode,
+            output=output,
+            errors_output=errors_output,
+            final=True,
+        ),
     )
     return records, errors
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description=(
-            "Generate JobCopilot emails and prepare records for human claim-level "
-            "grounding review."
-        )
+        description="Prepare generated emails for human claim-level grounding review."
     )
-    parser.add_argument(
-        "--dataset",
-        type=Path,
-        default=Path("evaluation/job_offers.v1.jsonl"),
-    )
-    parser.add_argument(
-        "--memories",
-        type=Path,
-        default=Path("data/profile_memories.atomic.json"),
-    )
-    parser.add_argument(
-        "--output",
-        type=Path,
-        default=Path("evaluation/results/email_grounding_review.jsonl"),
-    )
-    parser.add_argument(
-        "--errors-output",
-        type=Path,
-        default=Path("evaluation/results/email_grounding_errors.jsonl"),
-    )
-    parser.add_argument(
-        "--manifest-output",
-        type=Path,
-        default=Path("evaluation/results/email_grounding_manifest.json"),
-    )
-    parser.add_argument(
-        "--limit",
-        type=int,
-        default=10,
-        help="Generate N review records. Use zero for the full dataset.",
-    )
-    parser.add_argument(
-        "--sampling",
-        choices=("head", "stratified"),
-        default="stratified",
-        help=(
-            "Use stratified sampling for small runs so different role families are covered, "
-            "or head for the first N dataset rows."
-        ),
-    )
-    parser.add_argument(
-        "--execution-mode",
-        choices=("isolated", "end-to-end"),
-        default="isolated",
-        help=(
-            "isolated uses frozen benchmark job annotations and no Anthropic calls; "
-            "end-to-end runs the complete product graph and requires Anthropic credits."
-        ),
-    )
-    parser.add_argument(
-        "--start-index",
-        type=int,
-        default=0,
-        help="Skip the first N selected cases for manual batch or resume workflows.",
-    )
-    parser.add_argument(
-        "--max-cases",
-        type=int,
-        default=0,
-        help="Process at most N cases after start-index. Use zero for all remaining cases.",
-    )
+    parser.add_argument("--dataset", type=Path, default=Path("evaluation/job_offers.v1.jsonl"))
+    parser.add_argument("--memories", type=Path, default=Path("data/profile_memories.atomic.json"))
+    parser.add_argument("--output", type=Path, default=Path("evaluation/results/email_grounding_review.jsonl"))
+    parser.add_argument("--errors-output", type=Path, default=Path("evaluation/results/email_grounding_errors.jsonl"))
+    parser.add_argument("--manifest-output", type=Path, default=Path("evaluation/results/email_grounding_manifest.json"))
+    parser.add_argument("--limit", type=int, default=10)
+    parser.add_argument("--sampling", choices=("head", "stratified"), default="stratified")
+    parser.add_argument("--execution-mode", choices=("isolated", "end-to-end"), default="isolated")
+    parser.add_argument("--start-index", type=int, default=0)
+    parser.add_argument("--max-cases", type=int, default=0)
     args = parser.parse_args()
 
     if args.limit < 0 or args.start_index < 0 or args.max_cases < 0:
@@ -317,12 +294,7 @@ def main() -> None:
         for memory in memories
         if str(memory.get("content", "")).strip()
     }
-
-    runner = (
-        run_isolated_grounding_case
-        if args.execution_mode == "isolated"
-        else run_end_to_end_case
-    )
+    runner = run_isolated_grounding_case if args.execution_mode == "isolated" else run_end_to_end_case
     records, errors = prepare_records(
         cases=cases,
         runner=runner,
@@ -335,6 +307,11 @@ def main() -> None:
         memory_by_content=memory_by_content,
     )
 
+    telemetry = [
+        event
+        for record in records
+        for event in record.get("llm_telemetry", [])
+    ]
     summary = {
         "status": "partial" if errors else "complete",
         "execution_mode": args.execution_mode,
@@ -344,15 +321,10 @@ def main() -> None:
         "categories": sorted({record["category"] for record in records}),
         "sampling_mode": args.sampling,
         "memory_profile": str(args.memories),
-        "composition_variants": sorted(
-            {record["composition_variant"] for record in records}
-        ),
-        "unique_evidence_selections": len(
-            {tuple(record["selected_memory_ids"]) for record in records}
-        ),
-        "proposed_claims": sum(
-            len(record["proposed_claims"]) for record in records
-        ),
+        "composition_variants": sorted({record["composition_variant"] for record in records}),
+        "unique_evidence_selections": len({tuple(record["selected_memory_ids"]) for record in records}),
+        "proposed_claims": sum(len(record["proposed_claims"]) for record in records),
+        "provider_telemetry": summarize_llm_events(telemetry),
         "output": str(args.output),
         "manifest_output": str(args.manifest_output),
         "errors_output": str(args.errors_output),
