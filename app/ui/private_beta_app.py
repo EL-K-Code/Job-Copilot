@@ -4,12 +4,14 @@ import json
 import sys
 from datetime import date, timedelta
 from pathlib import Path
+from uuid import uuid4
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 import streamlit as st
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
 from app.auth import authenticate_beta_user
 from app.config import settings
@@ -83,6 +85,53 @@ def _run_pipeline(user_id: str, job_text: str) -> dict:
         "match": result["match_insight"],
         "email_draft": result["email_draft"],
     }
+
+
+def _message_to_text(content) -> str:
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts: list[str] = []
+        for item in content:
+            if isinstance(item, str):
+                parts.append(item)
+            elif isinstance(item, dict):
+                parts.append(str(item.get("text", item)))
+            else:
+                parts.append(str(item))
+        return "\n".join(part for part in parts if part)
+    return str(content)
+
+
+def _initialize_agent_session(user_id: str) -> None:
+    """Create a fresh, user-namespaced chat thread after login or account switch."""
+    if st.session_state.get("agent_user_id") == user_id:
+        return
+    st.session_state["agent_user_id"] = user_id
+    st.session_state["agent_thread_id"] = f"agent-{user_id}-{uuid4()}"
+    st.session_state["agent_messages"] = []
+
+
+def _run_agent_chat_turn(user_id: str, user_input: str) -> None:
+    from app.agent_graph import get_jobcopilot_agent_graph
+
+    graph = get_jobcopilot_agent_graph(user_id)
+    result = graph.invoke(
+        {"messages": [HumanMessage(content=user_input)]},
+        config={
+            "configurable": {
+                "thread_id": st.session_state["agent_thread_id"],
+            }
+        },
+    )
+    st.session_state["agent_messages"] = result["messages"]
+
+
+def _reset_agent_chat(user_id: str) -> None:
+    st.session_state["agent_user_id"] = user_id
+    st.session_state["agent_thread_id"] = f"agent-{user_id}-{uuid4()}"
+    st.session_state["agent_messages"] = []
+    st.success("Agent chat reset for your workspace.")
 
 
 def _render_profile_onboarding(user_id: str) -> bool:
@@ -213,6 +262,47 @@ def _render_analysis(user_id: str) -> None:
                 st.exception(exc)
 
 
+def _render_agent_chat(user_id: str) -> None:
+    st.subheader("Agent Chat")
+    st.caption(
+        "The agent can analyze offers, inspect your applications and prepare Gmail or "
+        "Calendar actions. External actions still require explicit confirmation."
+    )
+
+    if st.button("Reset my agent chat", use_container_width=True):
+        _reset_agent_chat(user_id)
+
+    messages = st.session_state.get("agent_messages", [])
+    if not messages:
+        st.info(
+            "Example: Paste a job offer and ask JobCopilot to analyze it and draft an email."
+        )
+
+    for message in messages:
+        if isinstance(message, HumanMessage):
+            with st.chat_message("user"):
+                st.markdown(_message_to_text(message.content))
+        elif isinstance(message, AIMessage):
+            text = _message_to_text(message.content).strip()
+            if text:
+                with st.chat_message("assistant"):
+                    st.markdown(text)
+        elif isinstance(message, ToolMessage):
+            with st.expander("Agent tool output"):
+                st.code(_message_to_text(message.content))
+
+    user_input = st.chat_input("Ask JobCopilot agent...")
+    if user_input:
+        with st.chat_message("user"):
+            st.markdown(user_input)
+        with st.spinner("Agent is working in your private workspace..."):
+            try:
+                _run_agent_chat_turn(user_id, user_input)
+                st.rerun()
+            except Exception as exc:
+                st.exception(exc)
+
+
 def _render_applications(user_id: str) -> None:
     st.subheader("My applications")
     records = load_application_records(user_id=user_id)
@@ -262,6 +352,7 @@ def _render_settings(user_id: str) -> None:
         else:
             delete_user_data(user_id)
             st.session_state.pop("results", None)
+            _reset_agent_chat(user_id)
             st.success("Your private workspace was deleted.")
             st.rerun()
 
@@ -279,6 +370,7 @@ def main() -> None:
 
     user_id = user["user_id"]
     ensure_user_directories(user_id)
+    _initialize_agent_session(user_id)
 
     with st.sidebar:
         st.title("JobCopilot")
@@ -289,21 +381,23 @@ def main() -> None:
 
     st.title("📨 JobCopilot Private Beta")
     st.caption(
-        "Every profile, application record, FAISS index and Google token is scoped to "
-        "the authenticated user."
+        "Every profile, application record, FAISS index, Google token and agent "
+        "conversation is scoped to the authenticated user."
     )
 
     if not _render_profile_onboarding(user_id):
         st.stop()
 
-    tab1, tab2, tab3 = st.tabs(
-        ["New application", "My applications", "Settings & privacy"]
+    tab1, tab2, tab3, tab4 = st.tabs(
+        ["New application", "Agent Chat", "My applications", "Settings & privacy"]
     )
     with tab1:
         _render_analysis(user_id)
     with tab2:
-        _render_applications(user_id)
+        _render_agent_chat(user_id)
     with tab3:
+        _render_applications(user_id)
+    with tab4:
         _render_settings(user_id)
 
 
