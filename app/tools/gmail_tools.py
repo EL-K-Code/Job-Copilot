@@ -11,6 +11,7 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 
 from app.config import settings
+from app.tenancy import get_user_paths
 
 
 GOOGLE_SCOPES = [
@@ -19,21 +20,26 @@ GOOGLE_SCOPES = [
 ]
 
 
-def google_token_exists() -> bool:
-    return settings.google_token_path.exists()
+def _google_token_path(user_id: str | None = None):
+    return settings.google_token_path if user_id is None else get_user_paths(user_id).google_token
 
 
-def get_google_credentials(interactive: bool = False) -> Credentials:
-    token_path = settings.google_token_path
+def google_token_exists(user_id: str | None = None) -> bool:
+    return _google_token_path(user_id).exists()
+
+
+def get_google_credentials(
+    interactive: bool = False,
+    *,
+    user_id: str | None = None,
+) -> Credentials:
+    token_path = _google_token_path(user_id)
     token_path.parent.mkdir(parents=True, exist_ok=True)
 
     creds: Credentials | None = None
 
     if token_path.exists():
-        creds = Credentials.from_authorized_user_file(
-            str(token_path),
-            GOOGLE_SCOPES,
-        )
+        creds = Credentials.from_authorized_user_file(str(token_path), GOOGLE_SCOPES)
 
     if creds and creds.valid:
         return creds
@@ -45,7 +51,7 @@ def get_google_credentials(interactive: bool = False) -> Credentials:
 
     if not interactive:
         raise RuntimeError(
-            "No valid Google token found. Run Google auth bootstrap first."
+            "No valid Google token found for this user. Connect Google first."
         )
 
     credentials_file = settings.google_client_secret_path
@@ -58,19 +64,21 @@ def get_google_credentials(interactive: bool = False) -> Credentials:
         str(credentials_file),
         GOOGLE_SCOPES,
     )
-
     creds = flow.run_local_server(
         host="127.0.0.1",
         port=8080,
         open_browser=True,
     )
-
     token_path.write_text(creds.to_json(), encoding="utf-8")
     return creds
 
 
-def build_gmail_service(interactive: bool = False):
-    creds = get_google_credentials(interactive=interactive)
+def build_gmail_service(
+    interactive: bool = False,
+    *,
+    user_id: str | None = None,
+):
+    creds = get_google_credentials(interactive=interactive, user_id=user_id)
     return build("gmail", "v1", credentials=creds)
 
 
@@ -126,9 +134,7 @@ def _build_raw_email(
         message["Bcc"] = validated_bcc
 
     message.set_content(validated_body)
-
-    raw_bytes = message.as_bytes()
-    return base64.urlsafe_b64encode(raw_bytes).decode("utf-8")
+    return base64.urlsafe_b64encode(message.as_bytes()).decode("utf-8")
 
 
 def create_gmail_draft(
@@ -137,6 +143,8 @@ def create_gmail_draft(
     body: str,
     cc: str | None = None,
     bcc: str | None = None,
+    *,
+    user_id: str | None = None,
 ) -> dict[str, Any]:
     raw_message = _build_raw_email(
         to=to,
@@ -145,18 +153,12 @@ def create_gmail_draft(
         cc=cc,
         bcc=bcc,
     )
-    service = build_gmail_service(interactive=False)
-
-    draft_body = {
-        "message": {
-            "raw": raw_message,
-        }
-    }
+    service = build_gmail_service(interactive=False, user_id=user_id)
 
     draft = (
         service.users()
         .drafts()
-        .create(userId="me", body=draft_body)
+        .create(userId="me", body={"message": {"raw": raw_message}})
         .execute()
     )
 
