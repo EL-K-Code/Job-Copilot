@@ -13,13 +13,21 @@ on:
           - "10"
           - "50"
       execution_mode:
-        description: Isolated grounding uses frozen annotations and no Anthropic credits
+        description: Isolated grounding uses frozen annotations and no paid LLM calls
         required: true
         default: isolated
         type: choice
         options:
           - isolated
           - end-to-end
+      llm_provider:
+        description: Primary provider for end-to-end mode
+        required: true
+        default: openai
+        type: choice
+        options:
+          - openai
+          - anthropic
 
 permissions:
   contents: read
@@ -34,6 +42,8 @@ jobs:
     timeout-minutes: 120
 
     env:
+      LLM_PROVIDER: ${{ inputs.llm_provider }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       PROFILE_MEMORIES_FILE: data/profile_memories.atomic.json
       ALLOW_TRUSTED_FAISS_DESERIALIZATION: "false"
@@ -56,13 +66,27 @@ jobs:
           path: ~/.cache/huggingface
           key: ${{ runner.os }}-huggingface-all-MiniLM-L6-v2-v1
 
-      - name: Verify Anthropic secret for end-to-end mode
+      - name: Verify selected provider secret for end-to-end mode
         if: ${{ inputs.execution_mode == 'end-to-end' }}
         shell: bash
         run: |
-          if [ -z "$ANTHROPIC_API_KEY" ]; then
+          if [ "$LLM_PROVIDER" = "openai" ] && [ -z "$OPENAI_API_KEY" ]; then
+            echo "::error::Missing repository secret OPENAI_API_KEY."
+            exit 1
+          fi
+          if [ "$LLM_PROVIDER" = "anthropic" ] && [ -z "$ANTHROPIC_API_KEY" ]; then
             echo "::error::Missing repository secret ANTHROPIC_API_KEY."
             exit 1
+          fi
+
+      - name: Configure optional cross-provider fallback
+        if: ${{ inputs.execution_mode == 'end-to-end' }}
+        shell: bash
+        run: |
+          if [ "$LLM_PROVIDER" = "openai" ] && [ -n "$ANTHROPIC_API_KEY" ]; then
+            echo "LLM_FALLBACK_PROVIDER=anthropic" >> "$GITHUB_ENV"
+          elif [ "$LLM_PROVIDER" = "anthropic" ] && [ -n "$OPENAI_API_KEY" ]; then
+            echo "LLM_FALLBACK_PROVIDER=openai" >> "$GITHUB_ENV"
           fi
 
       - name: Install dependencies
@@ -145,6 +169,7 @@ jobs:
               "",
               f"- Status: `{manifest.get('status', 'unknown')}`",
               f"- Execution mode: `{manifest.get('execution_mode', '${{ inputs.execution_mode }}')}`",
+              f"- Primary LLM provider: `${{ inputs.llm_provider }}`",
               f"- Requested records: {manifest.get('requested_jobs', '${{ inputs.case_count }}')}",
               f"- Review records prepared: {len(records)}",
               f"- Failed records: {len(errors)}",
@@ -154,8 +179,8 @@ jobs:
               f"- Safe composition variants used: {len(variants)}",
               f"- Machine-proposed evidence claims: {proposed_claim_count}",
               "- Candidate profile: fictional public atomic profile",
-              "- Isolated mode: frozen structured job annotations, local retrieval, deterministic selection and deterministic composition; no Anthropic API call",
-              "- End-to-end mode: complete product graph and Anthropic billing required",
+              "- Isolated mode: frozen structured job annotations, local retrieval, deterministic selection and deterministic composition; no paid LLM call",
+              "- End-to-end mode: complete product graph and selected provider billing required",
               "- Review status: `pending independent human claim-level annotation`",
               "",
           ]
@@ -191,7 +216,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: jobcopilot-grounding-review-${{ github.run_number }}-${{ inputs.case_count }}-cases-${{ inputs.execution_mode }}
+          name: jobcopilot-grounding-review-${{ github.run_number }}-${{ inputs.case_count }}-cases-${{ inputs.execution_mode }}-${{ inputs.llm_provider }}
           path: |
             evaluation/results/email_grounding_review.jsonl
             evaluation/results/email_grounding_manifest.json
