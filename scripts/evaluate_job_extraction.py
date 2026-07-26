@@ -4,7 +4,7 @@ import argparse
 import hashlib
 import json
 import sys
-from collections import defaultdict
+from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 from statistics import mean
@@ -20,10 +20,15 @@ from app.evaluation import (
     evaluate_job_analysis,
 )
 from app.services.llm import analyze_job_offer
+from app.services.llm_telemetry import (
+    capture_llm_telemetry,
+    serialize_llm_events,
+    summarize_llm_events,
+)
 from app.services.model_provider import configured_model_label
 
 
-EVALUATION_PROTOCOL_VERSION = "1.2.0"
+EVALUATION_PROTOCOL_VERSION = "1.3.0"
 
 
 def load_cases(path: Path) -> list[dict]:
@@ -123,12 +128,39 @@ def grouped_summaries(case_results: list[dict], field: str) -> dict[str, dict]:
     }
 
 
+def summarize_provider_telemetry(case_results: list[dict]) -> dict:
+    events = [
+        event
+        for item in case_results
+        for event in item.get("llm_telemetry", [])
+    ]
+    final_providers = Counter(
+        item.get("llm_telemetry_summary", {}).get("final_provider")
+        for item in case_results
+        if item.get("llm_telemetry_summary", {}).get("final_provider")
+    )
+    return {
+        **summarize_llm_events(events),
+        "successful_cases_by_provider": dict(final_providers),
+        "cases_using_fallback": sum(
+            bool(item.get("llm_telemetry_summary", {}).get("fallback_used"))
+            for item in case_results
+        ),
+        "privacy_boundary": (
+            "Provider, model, operation, latency, status and available token counts only; "
+            "prompts, outputs, API keys and raw provider errors are not recorded."
+        ),
+    }
+
+
 def run_evaluation(cases: list[dict]) -> dict:
     case_results: list[dict] = []
 
     for case in cases:
-        prediction = analyze_job_offer(case["job_text"])
+        with capture_llm_telemetry() as telemetry_events:
+            prediction = analyze_job_offer(case["job_text"])
         metrics = evaluate_job_analysis(prediction, case["expected"])
+        serialized_events = serialize_llm_events(telemetry_events)
         case_results.append(
             {
                 "id": case["id"],
@@ -138,11 +170,14 @@ def run_evaluation(cases: list[dict]) -> dict:
                 "prediction": prediction.model_dump(),
                 "expected": case["expected"],
                 "metrics": metrics,
+                "llm_telemetry": serialized_events,
+                "llm_telemetry_summary": summarize_llm_events(serialized_events),
             }
         )
 
     return {
         "aggregate": summarize_results(case_results),
+        "provider_telemetry": summarize_provider_telemetry(case_results),
         "by_language": grouped_summaries(case_results, "language"),
         "by_category": grouped_summaries(case_results, "category"),
         "by_difficulty": grouped_summaries(case_results, "difficulty"),
@@ -223,6 +258,7 @@ def main() -> None:
                 "benchmark_version": report["benchmark_version"],
                 "evaluation_protocol_version": report["evaluation_protocol_version"],
                 "model": report["model"],
+                "provider_telemetry": report["provider_telemetry"],
                 **report["aggregate"],
                 "output": str(args.output),
             },
