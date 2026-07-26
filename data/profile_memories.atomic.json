@@ -1,0 +1,219 @@
+[
+  {
+    "id": "identity_reliable_ai",
+    "type": "identity",
+    "topic": "reliable_applied_ai",
+    "group_id": "identity",
+    "content": "The demo candidate is an early-career machine learning engineer interested in reliable applied AI systems."
+  },
+  {
+    "id": "education_data_science",
+    "type": "education",
+    "topic": "data_science",
+    "group_id": "education",
+    "content": "The demo candidate completed graduate-level training in data science."
+  },
+  {
+    "id": "education_statistics",
+    "type": "education",
+    "topic": "statistics",
+    "group_id": "education",
+    "content": "The demo candidate completed graduate-level training in statistics."
+  },
+  {
+    "id": "education_software_engineering",
+    "type": "education",
+    "topic": "software_engineering",
+    "group_id": "education",
+    "content": "The demo candidate completed graduate-level training in software engineering."
+  },
+  {
+    "id": "experience_ml_roc_auc",
+    "type": "experience",
+    "topic": "roc_auc",
+    "group_id": "ml_evaluation",
+    "content": "The demo candidate evaluated a machine learning matching system using ROC-AUC."
+  },
+  {
+    "id": "experience_ml_thresholds",
+    "type": "experience",
+    "topic": "threshold_analysis",
+    "group_id": "ml_evaluation",
+    "content": "The demo candidate performed threshold analysis for a machine learning matching system."
+  },
+  {
+    "id": "experience_ml_error_review",
+    "type": "experience",
+    "topic": "error_analysis",
+    "group_id": "ml_evaluation",
+    "content": "The demo candidate conducted structured error reviews for a machine learning matching system."
+  },
+  {
+    "id": "experience_data_cleaning",
+    "type": "experience",
+    "topic": "data_cleaning",
+    "group_id": "data_analysis",
+    "content": "The demo candidate contributed to data cleaning on operational datasets."
+  },
+  {
+    "id": "experience_exploratory_analysis",
+    "type": "experience",
+    "topic": "exploratory_data_analysis",
+    "group_id": "data_analysis",
+    "content": "The demo candidate contributed to exploratory analysis on operational datasets."
+  },
+  {
+    "id": "experience_statistical_modeling",
+    "type": "experience",
+    "topic": "statistical_modeling",
+    "group_id": "data_analysis",
+    "content": "The demo candidate contributed to statistical modeling on operational datasets."
+  },
+  {
+    "id": "project_agent_langgraph",
+    "type": "project",
+    "topic": "langgraph",
+    "group_id": "agentic_ai",
+    "content": "The demo candidate built an agentic workflow with LangGraph."
+  },
+  {
+    "id": "project_agent_structured_outputs",
+    "type": "project",
+    "topic": "structured_llm_outputs",
+    "group_id": "agentic_ai",
+    "content": "The demo candidate used structured LLM outputs in an agentic workflow."
+  },
+  {
+    "id": "project_agent_human_supervision",
+    "type": "project",
+    "topic": "human_supervision",
+    "group_id": "agentic_ai",
+    "content": "The demo candidate implemented human-supervised tool calls in an agentic workflow."
+  },
+  {
+    "id": "project_retrieval_embeddings",
+    "type": "project",
+    "topic": "sentence_embeddings",
+    "group_id": "retrieval",
+    "content": "The demo candidate developed a retrieval prototype using sentence embeddings."
+  },
+  {
+    "id": "project_retrieval_faiss",
+    "type": "project",
+    "topic": "faiss",
+    "group_id": "retrieval",
+    "content": "The demo candidate developed a retrieval prototype using FAISS."
+  },
+  {
+    "id": "project_retrieval_evaluation",
+    "type": "project",
+    "topic": "retrieval_evaluation",
+    "group_id": "retrieval",
+    "content": "The demo candidate performed explicit relevance evaluation for a retrieval prototype."
+  },
+  {
+    "id": "project_serving_fastapi",
+    "type": "project",
+    "topic": "model_serving",
+    "group_id": "ml_serving",
+    "content": "The demo candidate created a FastAPI service for machine learning model serving."
+  },
+  {
+    "id": "project_serving_docker",
+    "type": "project",
+    "topic": "containerization",
+    "group_id": "ml_serving",
+    "content": "The demo candidate containerized a machine learning model-serving service with Docker."
+  },
+  {
+    "id": "skill_python",
+    "type": "skill",
+    "topic": "python",
+    "group_id": "technical_skills",
+    "content": "The demo candidate works with Python."
+  },
+  {
+    "id": "skill_sql",
+    "type": "skill",
+    "topic": "sql",
+    "group_id": "technical_skills",
+    "content": "The demo candidate works with SQL."
+  },
+  {
+    "id": "skill_pytorch",
+    "type": "skill",
+    "topic": "pytorch",
+    "group_id": "technical_skills",
+    "content": "The demo candidate works with PyTorch."
+  },
+  {
+    "id": "skill_scikit_learn",
+    "type": "skill",
+    "topic": "scikit_learn",
+    "group_id": "technical_skills",
+    "content": "The demo candidate works with scikit-learn."
+  },
+  {
+    "id": "skill_fastapi",
+    "type": "skill",
+    "topic": "fastapi",
+    "group_id": "technical_skills",
+    "content": "The demo candidate works with FastAPI."
+  },
+  {
+    "id": "skill_git",
+    "type": "skill",
+    "topic": "git",
+    "group_id": "technical_skills",
+    "content": "The demo candidate works with Git."
+  },
+  {
+    "id": "skill_docker",
+    "type": "skill",
+    "topic": "docker",
+    "group_id": "technical_skills",
+    "content": "The demo candidate works with Docker."
+  },
+  {
+    "id": "skill_nlp",
+    "type": "skill",
+    "topic": "nlp",
+    "group_id": "ai_skills",
+    "content": "The demo candidate has practical experience with natural language processing."
+  },
+  {
+    "id": "skill_llm_apis",
+    "type": "skill",
+    "topic": "llm_apis",
+    "group_id": "ai_skills",
+    "content": "The demo candidate has practical experience with large language model APIs."
+  },
+  {
+    "id": "skill_rag",
+    "type": "skill",
+    "topic": "rag",
+    "group_id": "ai_skills",
+    "content": "The demo candidate has practical experience with retrieval-augmented generation."
+  },
+  {
+    "id": "skill_evaluation_metrics",
+    "type": "skill",
+    "topic": "evaluation_metrics",
+    "group_id": "ai_skills",
+    "content": "The demo candidate has practical experience with machine learning evaluation metrics."
+  },
+  {
+    "id": "skill_data_pipelines",
+    "type": "skill",
+    "topic": "data_pipelines",
+    "group_id": "data_engineering",
+    "content": "The demo candidate has practical experience with data pipelines."
+  },
+  {
+    "id": "preference_evidence_only_emails",
+    "type": "preference",
+    "topic": "evidence_grounded_writing",
+    "group_id": "preferences",
+    "content": "The demo candidate prefers concise application emails that only use evidence present in the candidate profile."
+  }
+]
