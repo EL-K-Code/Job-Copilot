@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 def load_profile_memories(file_path: Path | None = None) -> list[dict[str, Any]]:
-    """Load structured profile memories from a JSON file."""
+    """Load and validate structured profile memories from a JSON file."""
     target_path = file_path or settings.profile_memories_path
 
     if not target_path.exists():
@@ -28,11 +28,26 @@ def load_profile_memories(file_path: Path | None = None) -> list[dict[str, Any]]
     if not isinstance(data, list):
         raise ValueError("Profile memories JSON must contain a list of memory objects.")
 
+    seen_ids: set[str] = set()
+    for index, memory in enumerate(data, start=1):
+        if not isinstance(memory, dict):
+            raise ValueError(f"Profile memory {index} must be a JSON object.")
+        memory_id = str(memory.get("id", "")).strip()
+        memory_type = str(memory.get("type", "")).strip()
+        content = str(memory.get("content", "")).strip()
+        if not memory_id or not memory_type or not content:
+            raise ValueError(
+                f"Profile memory {index} must contain non-empty id, type and content fields."
+            )
+        if memory_id in seen_ids:
+            raise ValueError(f"Profile memories contain duplicate id: {memory_id}")
+        seen_ids.add(memory_id)
+
     return data
 
 
 def profile_memories_to_documents(memories: list[dict[str, Any]]) -> list[Document]:
-    """Convert structured profile memories into LangChain documents."""
+    """Convert structured profile memories into documents without losing audit metadata."""
     documents: list[Document] = []
 
     for memory in memories:
@@ -41,8 +56,9 @@ def profile_memories_to_documents(memories: list[dict[str, Any]]) -> list[Docume
             continue
 
         metadata = {
-            "id": memory.get("id"),
-            "type": memory.get("type"),
+            str(key): value
+            for key, value in memory.items()
+            if key != "content" and value is not None
         }
 
         documents.append(
@@ -92,7 +108,7 @@ def load_profile_vector_store() -> FAISS:
     if not settings.allow_trusted_faiss_deserialization:
         raise RuntimeError(
             "Loading a persisted FAISS store is disabled by default because the "
-            "LangChain store includes pickle data. Rebuild from profile_memories.json "
+            "LangChain store includes pickle data. Rebuild from profile memories JSON "
             "or set ALLOW_TRUSTED_FAISS_DESERIALIZATION=true only for an index that "
             "you generated locally and trust."
         )
@@ -127,7 +143,7 @@ def get_or_create_profile_vector_store() -> FAISS:
     if persisted_store_exists:
         logger.warning(
             "A persisted FAISS store exists but trusted deserialization is disabled; "
-            "rebuilding the in-memory index from profile_memories.json."
+            "rebuilding the in-memory index from profile memories JSON."
         )
 
     vector_store = build_profile_vector_store()
