@@ -9,8 +9,12 @@ from app.config import settings
 from app.tools.gmail_tools import get_google_credentials
 
 
-def build_calendar_service(interactive: bool = False):
-    creds = get_google_credentials(interactive=interactive)
+def build_calendar_service(
+    interactive: bool = False,
+    *,
+    user_id: str | None = None,
+):
+    creds = get_google_credentials(interactive=interactive, user_id=user_id)
     return build("calendar", "v3", credentials=creds)
 
 
@@ -20,6 +24,8 @@ def create_followup_event(
     end_iso: str,
     description: str = "",
     timezone_str: str | None = None,
+    *,
+    user_id: str | None = None,
 ) -> dict[str, Any]:
     normalized_summary = summary.strip()
     if not normalized_summary:
@@ -30,7 +36,7 @@ def create_followup_event(
     if end_dt <= start_dt:
         raise ValueError("Calendar event end time must be after its start time.")
 
-    service = build_calendar_service(interactive=False)
+    service = build_calendar_service(interactive=False, user_id=user_id)
     effective_timezone = timezone_str or settings.default_timezone
 
     event_body = {
