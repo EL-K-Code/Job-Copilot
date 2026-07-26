@@ -1,14 +1,18 @@
 from __future__ import annotations
 
+from functools import lru_cache
+
 from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import SystemMessage
+from langchain_core.tools import BaseTool
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph import START, END, StateGraph
 from langgraph.prebuilt import ToolNode, tools_condition
 
 from app.agent_state import JobCopilotAgentState
-from app.agent_tools import AGENT_TOOLS
+from app.agent_tools import AGENT_TOOLS, build_agent_tools
 from app.config import settings
+from app.tenancy import normalize_user_id
 
 
 AGENT_SYSTEM_PROMPT = """
@@ -31,36 +35,56 @@ Rules:
 - Ask the user to confirm the proposed external action.
 - Call an external-action tool with confirmed=true only after the user clearly confirms it.
 - If confirmation is absent or ambiguous, keep confirmed=false and do not retry the action automatically.
+- Every tool is already bound to the authenticated user's private workspace. Never ask for, infer, expose or change a user ID.
 - Be concise, professional, and operational.
 """.strip()
 
 
-def get_agent_llm() -> ChatAnthropic:
+def get_agent_llm(tools: list[BaseTool] | None = None) -> ChatAnthropic:
+    """Return the agent model bound to the supplied tenant-safe tools."""
     return ChatAnthropic(
         model=settings.anthropic_model,
         temperature=0,
         api_key=settings.require_anthropic_api_key(),
-    ).bind_tools(AGENT_TOOLS)
+    ).bind_tools(tools or AGENT_TOOLS)
 
 
-def agent_node(state: JobCopilotAgentState) -> JobCopilotAgentState:
-    llm = get_agent_llm()
-
+def _invoke_agent_node(
+    state: JobCopilotAgentState,
+    tools: list[BaseTool],
+) -> JobCopilotAgentState:
+    llm = get_agent_llm(tools)
     response = llm.invoke(
         [SystemMessage(content=AGENT_SYSTEM_PROMPT), *state["messages"]]
     )
-
     return {"messages": [response]}
 
 
-def build_jobcopilot_agent_graph():
+def agent_node(state: JobCopilotAgentState) -> JobCopilotAgentState:
+    """Backward-compatible single-user agent node."""
+    return _invoke_agent_node(state, AGENT_TOOLS)
+
+
+def build_jobcopilot_agent_graph(user_id: str | None = None):
+    """
+    Build an agent graph whose tools and in-memory checkpoint are isolated to one user.
+
+    A separate graph instance is required because LangGraph's in-memory checkpointer holds
+    conversation state. Sharing it across tenants would make a thread-ID collision a data
+    isolation risk.
+    """
+    normalized_user_id = (
+        normalize_user_id(user_id) if user_id is not None else None
+    )
+    tools = build_agent_tools(normalized_user_id)
+
+    def scoped_agent_node(state: JobCopilotAgentState) -> JobCopilotAgentState:
+        return _invoke_agent_node(state, tools)
+
     builder = StateGraph(JobCopilotAgentState)
-
-    builder.add_node("agent", agent_node)
-    builder.add_node("tools", ToolNode(AGENT_TOOLS))
-
+    builder.add_node("agent", scoped_agent_node)
+    builder.add_node("tools", ToolNode(tools))
     builder.add_edge(START, "agent")
-
     builder.add_conditional_edges(
         "agent",
         tools_condition,
@@ -69,11 +93,21 @@ def build_jobcopilot_agent_graph():
             "__end__": END,
         },
     )
-
     builder.add_edge("tools", "agent")
 
-    checkpointer = InMemorySaver()
-    return builder.compile(checkpointer=checkpointer)
+    return builder.compile(checkpointer=InMemorySaver())
 
 
+@lru_cache(maxsize=64)
+def get_jobcopilot_agent_graph(user_id: str):
+    """Return one cached agent graph and checkpointer per normalized beta user."""
+    return build_jobcopilot_agent_graph(normalize_user_id(user_id))
+
+
+def clear_jobcopilot_agent_graph_cache() -> None:
+    """Clear all tenant-scoped in-memory agent graphs and conversations."""
+    get_jobcopilot_agent_graph.cache_clear()
+
+
+# Backward-compatible graph used by the original single-user Streamlit application.
 jobcopilot_agent_graph = build_jobcopilot_agent_graph()
