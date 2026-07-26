@@ -36,6 +36,32 @@ _ALIAS_PATTERNS = (
     (r"\bcontinuous integration(?: and| /|/) continuous deployment\b", "ci cd"),
 )
 
+# Atomic-memory topics can encode a narrow, auditable semantic relationship that
+# lexical overlap alone cannot capture. These rules deliberately remain small and
+# explicit instead of turning the relevance scorer into an opaque semantic model.
+_TOPIC_SEMANTIC_TRIGGERS = {
+    "human supervision": (
+        "responsible ai",
+        "trustworthy ai",
+        "ai safety",
+        "human oversight",
+        "human in the loop",
+    ),
+    "evaluation metrics": (
+        "model evaluation",
+        "ai evaluation",
+        "evaluation protocol",
+        "evaluation protocols",
+        "model failure mode",
+        "model failure modes",
+        "error analysis",
+        "robustness testing",
+        "calibration",
+    ),
+}
+
+_SEMANTIC_TOPIC_DISCOUNT = 0.80
+
 _STOPWORDS = {
     "a",
     "an",
@@ -92,6 +118,19 @@ def _ordered_unique(values: Iterable[str]) -> list[str]:
     return output
 
 
+def _contains_normalized_phrase(text: str, phrase: str) -> bool:
+    normalized_text = f" {normalize_relevance_text(text)} "
+    normalized_phrase = f" {normalize_relevance_text(phrase)} "
+    return normalized_phrase in normalized_text
+
+
+def _topic_semantically_aligns(memory_record: dict[str, Any], job_term: str) -> bool:
+    """Return whether an atomic topic has an explicit controlled relation to a job term."""
+    topic = normalize_relevance_text(str(memory_record.get("topic", "")))
+    triggers = _TOPIC_SEMANTIC_TRIGGERS.get(topic, ())
+    return any(_contains_normalized_phrase(job_term, trigger) for trigger in triggers)
+
+
 def job_relevance_terms(job_analysis: JobAnalysis) -> list[tuple[str, float, str]]:
     """Return weighted, deduplicated job terms used for auditable scoring."""
     fields: list[tuple[str, list[str]]] = [
@@ -119,7 +158,7 @@ def score_memory_for_job(
     job_analysis: JobAnalysis,
     memory_record: dict[str, Any],
 ) -> tuple[float, list[str]]:
-    """Score one retrieved memory against explicit offer terms only."""
+    """Score one retrieved memory against explicit offer terms and controlled atomic topics."""
     content = str(memory_record.get("content", "")).strip()
     if not content:
         return 0.0, []
@@ -138,11 +177,14 @@ def score_memory_for_job(
         exact_match = f" {normalized_term} " in f" {normalized_content} "
         overlap = len(term_tokens & content_tokens)
         coverage = overlap / len(term_tokens)
+        semantic_topic_match = _topic_semantically_aligns(memory_record, term)
 
         if exact_match:
             contribution = weight
         elif overlap and coverage >= 0.60:
             contribution = weight * coverage * 0.65
+        elif semantic_topic_match:
+            contribution = weight * _SEMANTIC_TOPIC_DISCOUNT
         else:
             continue
 
