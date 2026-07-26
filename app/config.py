@@ -19,10 +19,18 @@ def _env_flag(name: str, default: bool = False) -> bool:
 
 @dataclass(frozen=True)
 class Settings:
+    llm_provider: str = os.getenv("LLM_PROVIDER", "anthropic")
+    llm_fallback_provider: str = os.getenv("LLM_FALLBACK_PROVIDER", "")
+
+    openai_api_key: str = os.getenv("OPENAI_API_KEY", "")
+    openai_model: str = os.getenv("OPENAI_MODEL", "gpt-5-mini")
+
     anthropic_api_key: str = os.getenv("ANTHROPIC_API_KEY", "")
     anthropic_model: str = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-6")
 
-    google_client_secret_file: str = os.getenv("GOOGLE_CLIENT_SECRET_FILE", "credentials.json")
+    google_client_secret_file: str = os.getenv(
+        "GOOGLE_CLIENT_SECRET_FILE", "credentials.json"
+    )
     google_token_dir: str = os.getenv("GOOGLE_TOKEN_DIR", "tokens")
 
     memory_index_dir: str = os.getenv("MEMORY_INDEX_DIR", "data/faiss_index")
@@ -74,12 +82,21 @@ class Settings:
     def beta_users_path(self) -> Path:
         return self.project_root / self.beta_users_file
 
+    def require_openai_api_key(self) -> str:
+        """Return the configured OpenAI API key or fail without exposing it."""
+        if not self.openai_api_key.strip():
+            raise RuntimeError(
+                "OPENAI_API_KEY is not configured. Add it to a local .env file or "
+                "to the deployment secret store."
+            )
+        return self.openai_api_key
+
     def require_anthropic_api_key(self) -> str:
-        """Return the configured API key or fail with an actionable message."""
+        """Return the configured Anthropic API key or fail without exposing it."""
         if not self.anthropic_api_key.strip():
             raise RuntimeError(
                 "ANTHROPIC_API_KEY is not configured. Add it to a local .env file "
-                "or export it in the current environment."
+                "or to the deployment secret store."
             )
         return self.anthropic_api_key
 
