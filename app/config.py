@@ -19,7 +19,7 @@ def _env_flag(name: str, default: bool = False) -> bool:
 
 @dataclass(frozen=True)
 class Settings:
-    llm_provider: str = os.getenv("LLM_PROVIDER", "anthropic")
+    llm_provider: str = os.getenv("LLM_PROVIDER", "openai")
     llm_fallback_provider: str = os.getenv("LLM_FALLBACK_PROVIDER", "")
 
     openai_api_key: str = os.getenv("OPENAI_API_KEY", "")
