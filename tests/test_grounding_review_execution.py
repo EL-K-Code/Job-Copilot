@@ -61,6 +61,87 @@ def test_isolated_grounding_uses_expected_analysis_without_product_graph(monkeyp
     assert result["job_analysis"]["company"] == "Vision Lab"
 
 
+def test_responsible_ai_isolated_case_uses_only_positive_specific_evidence(monkeypatch):
+    case = {
+        "id": "offer_032",
+        "job_text": "This text must not be sent to an LLM in isolated mode.",
+        "expected": {
+            "company": "Kairo Tech",
+            "role": "Responsible AI Engineer Intern",
+            "location": "Remote — France",
+            "contract_type": "Apprenticeship",
+            "start_date": "January 2027",
+            "missions_summary": [
+                "Design evaluation protocols",
+                "Measure model failure modes",
+                "Report reliability trade-offs",
+            ],
+            "required_skills": ["Python", "model evaluation", "error analysis"],
+            "preferred_skills": ["calibration"],
+            "tools_and_stack": ["Python", "PyTorch", "scikit-learn"],
+            "profile_summary": "Responsible AI engineer",
+            "domain_focus": ["AI evaluation", "reliability", "responsible AI"],
+            "key_highlights_for_candidate": ["Python", "model evaluation"],
+        },
+    }
+    documents = [
+        SimpleNamespace(
+            page_content=(
+                "The demo candidate implemented human-supervised tool calls "
+                "in an agentic workflow."
+            ),
+            metadata={
+                "id": "project_agent_human_supervision",
+                "type": "project",
+                "topic": "human_supervision",
+                "group_id": "agentic_ai",
+            },
+        ),
+        SimpleNamespace(
+            page_content=(
+                "The demo candidate has practical experience with machine learning "
+                "evaluation metrics."
+            ),
+            metadata={
+                "id": "skill_evaluation_metrics",
+                "type": "skill",
+                "topic": "evaluation_metrics",
+                "group_id": "ai_skills",
+            },
+        ),
+        SimpleNamespace(
+            page_content=(
+                "The demo candidate completed graduate-level training in software engineering."
+            ),
+            metadata={
+                "id": "education_software_engineering",
+                "type": "education",
+                "topic": "software_engineering",
+                "group_id": "education",
+            },
+        ),
+    ]
+    monkeypatch.setattr(
+        review_script,
+        "retrieve_profile_context",
+        lambda query, k: documents,
+    )
+
+    result = review_script.run_isolated_grounding_case(case)
+    claims = result["email_draft"]["claim_evidence"]
+    selected_ids = {
+        item["supporting_memory_ids"][0]
+        for item in claims
+    }
+
+    assert selected_ids == {
+        "project_agent_human_supervision",
+        "skill_evaluation_metrics",
+    }
+    assert all(item["relevance_score"] > 0 for item in claims)
+    assert "software engineering" not in result["email_draft"]["body"].casefold()
+
+
 def test_partial_failure_preserves_completed_records_and_manifest(tmp_path):
     cases = [
         {"id": "offer_001", "category": "LLM", "language": "en"},
