@@ -45,7 +45,7 @@ def main() -> None:
     parser.add_argument(
         "--memories",
         type=Path,
-        default=Path("data/profile_memories.example.json"),
+        default=Path("data/profile_memories.atomic.json"),
     )
     parser.add_argument(
         "--output",
@@ -82,9 +82,9 @@ def main() -> None:
     memories = load_profile_memories(args.memories)
     memory_by_content = {
         str(memory.get("content", "")).strip(): {
-            "id": str(memory.get("id", "")).strip(),
-            "type": str(memory.get("type", "")).strip(),
-            "content": str(memory.get("content", "")).strip(),
+            key: value
+            for key, value in memory.items()
+            if value is not None
         }
         for memory in memories
         if str(memory.get("content", "")).strip()
@@ -114,6 +114,7 @@ def main() -> None:
                 "language": case.get("language", "unknown"),
                 "category": case.get("category", "unknown"),
                 "sampling_mode": args.sampling,
+                "memory_profile": str(args.memories),
                 "email_subject": email_draft["subject"],
                 "email_body": email_draft["body"],
                 "composition_variant": email_draft.get("composition_variant", "direct"),
@@ -127,7 +128,7 @@ def main() -> None:
                     "as a machine-generated starting point, but independently verify claim "
                     "coverage and evidence. Label each reviewed claim supported, unsupported "
                     "or ambiguous, and list only retrieved memory IDs as evidence. Also assess "
-                    "whether selected evidence is role-specific rather than merely generic."
+                    "whether selected evidence is atomic and role-specific rather than merely generic."
                 ),
             }
         )
@@ -145,6 +146,7 @@ def main() -> None:
                     {record["category"] for record in review_records}
                 ),
                 "sampling_mode": args.sampling,
+                "memory_profile": str(args.memories),
                 "composition_variants": sorted(
                     {record["composition_variant"] for record in review_records}
                 ),
