@@ -13,7 +13,6 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from app.config import settings
 from app.evaluation import (
     SCALAR_FIELDS,
     SCORED_LIST_FIELDS,
@@ -21,6 +20,7 @@ from app.evaluation import (
     evaluate_job_analysis,
 )
 from app.services.llm import analyze_job_offer
+from app.services.model_provider import configured_model_label
 
 
 EVALUATION_PROTOCOL_VERSION = "1.2.0"
@@ -190,7 +190,7 @@ def main() -> None:
         "benchmark_version": args.benchmark_version,
         "evaluation_protocol_version": EVALUATION_PROTOCOL_VERSION,
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "model": settings.anthropic_model,
+        "model": configured_model_label(),
         "dataset": str(args.dataset),
         "dataset_sha256": sha256_file(args.dataset),
         "prompt_sha256": sha256_file(PROJECT_ROOT / "app" / "prompts.py"),

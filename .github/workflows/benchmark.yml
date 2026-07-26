@@ -11,6 +11,14 @@ on:
         options:
           - "5"
           - "50"
+      llm_provider:
+        description: Primary LLM provider for extraction
+        required: true
+        default: openai
+        type: choice
+        options:
+          - openai
+          - anthropic
 
 permissions:
   contents: read
@@ -25,6 +33,8 @@ jobs:
     timeout-minutes: 90
 
     env:
+      LLM_PROVIDER: ${{ inputs.llm_provider }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       PYTHONUNBUFFERED: "1"
 
@@ -38,12 +48,25 @@ jobs:
           python-version: "3.11"
           cache: pip
 
-      - name: Verify Anthropic secret
+      - name: Verify selected provider secret
         shell: bash
         run: |
-          if [ -z "$ANTHROPIC_API_KEY" ]; then
-            echo "::error::Missing repository secret ANTHROPIC_API_KEY. Add it under Settings > Secrets and variables > Actions before running this workflow."
+          if [ "$LLM_PROVIDER" = "openai" ] && [ -z "$OPENAI_API_KEY" ]; then
+            echo "::error::Missing repository secret OPENAI_API_KEY. Add it under Settings > Secrets and variables > Actions."
             exit 1
+          fi
+          if [ "$LLM_PROVIDER" = "anthropic" ] && [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "::error::Missing repository secret ANTHROPIC_API_KEY."
+            exit 1
+          fi
+
+      - name: Configure optional cross-provider fallback
+        shell: bash
+        run: |
+          if [ "$LLM_PROVIDER" = "openai" ] && [ -n "$ANTHROPIC_API_KEY" ]; then
+            echo "LLM_FALLBACK_PROVIDER=anthropic" >> "$GITHUB_ENV"
+          elif [ "$LLM_PROVIDER" = "anthropic" ] && [ -n "$OPENAI_API_KEY" ]; then
+            echo "LLM_FALLBACK_PROVIDER=openai" >> "$GITHUB_ENV"
           fi
 
       - name: Install dependencies
@@ -83,7 +106,7 @@ jobs:
               "",
               f"- Cases evaluated: {aggregate.get('number_of_cases', 0)}",
               f"- Dataset: `{report.get('dataset', 'unknown')}`",
-              f"- Model: `{report.get('model', 'unknown')}`",
+              f"- Model chain: `{report.get('model', 'unknown')}`",
               f"- Normalized scalar accuracy: {aggregate.get('mean_scalar_accuracy', 0.0):.4f}",
               f"- Strict scalar accuracy: {aggregate.get('mean_strict_scalar_accuracy', 0.0):.4f}",
               f"- Closed-label list F1: {aggregate.get('mean_macro_label_list_f1', 0.0):.4f}",
@@ -104,7 +127,7 @@ jobs:
       - name: Upload benchmark report
         uses: actions/upload-artifact@v4
         with:
-          name: jobcopilot-benchmark-${{ github.run_number }}-${{ inputs.case_count }}-cases
+          name: jobcopilot-benchmark-${{ github.run_number }}-${{ inputs.case_count }}-cases-${{ inputs.llm_provider }}
           path: evaluation/results/job_extraction_report.json
           if-no-files-found: error
           retention-days: 30

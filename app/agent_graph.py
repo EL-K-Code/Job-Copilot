@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from functools import lru_cache
 
-from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import SystemMessage
 from langchain_core.tools import BaseTool
 from langgraph.checkpoint.memory import InMemorySaver
@@ -11,7 +10,7 @@ from langgraph.prebuilt import ToolNode, tools_condition
 
 from app.agent_state import JobCopilotAgentState
 from app.agent_tools import AGENT_TOOLS, build_agent_tools
-from app.config import settings
+from app.services.model_provider import get_tool_calling_chat_model
 from app.tenancy import normalize_user_id
 
 
@@ -40,13 +39,9 @@ Rules:
 """.strip()
 
 
-def get_agent_llm(tools: list[BaseTool] | None = None) -> ChatAnthropic:
-    """Return the agent model bound to the supplied tenant-safe tools."""
-    return ChatAnthropic(
-        model=settings.anthropic_model,
-        temperature=0,
-        api_key=settings.require_anthropic_api_key(),
-    ).bind_tools(tools or AGENT_TOOLS)
+def get_agent_llm(tools: list[BaseTool] | None = None):
+    """Return the configured provider chain bound to tenant-safe tools."""
+    return get_tool_calling_chat_model(tools or AGENT_TOOLS)
 
 
 def _invoke_agent_node(

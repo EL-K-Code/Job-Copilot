@@ -19,6 +19,25 @@ The application resolves these paths from a validated `user_id`. Path separators
 
 Agent Chat uses a separate tool set, LangGraph instance, in-memory checkpointer and namespaced conversation thread for each authenticated user. The user ID is bound in Python and is not exposed in the model's tool schemas.
 
+## Configure the LLM provider
+
+JobCopilot supports OpenAI and Anthropic for structured extraction, matching, evidence selection and Agent Chat.
+
+```env
+LLM_PROVIDER=openai
+OPENAI_API_KEY=your_local_openai_key
+OPENAI_MODEL=gpt-4.1-mini
+
+# Optional automatic fallback when the primary provider fails
+LLM_FALLBACK_PROVIDER=anthropic
+ANTHROPIC_API_KEY=your_local_anthropic_key
+ANTHROPIC_MODEL=claude-sonnet-4-6
+```
+
+The primary provider must have a configured key. A fallback provider without a key is skipped rather than blocking startup. Never commit real API keys; use local environment files or the deployment secret store.
+
+GitHub Actions uses the repository secret `OPENAI_API_KEY` when OpenAI is selected. If both provider secrets exist, the workflows automatically configure the other provider as a fallback.
+
 ## Enable private beta authentication
 
 In `.env`:
