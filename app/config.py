@@ -32,6 +32,10 @@ class Settings:
         "data/profile_memories.atomic.json",
     )
 
+    user_data_root: str = os.getenv("USER_DATA_ROOT", "data/users")
+    beta_users_file: str = os.getenv("BETA_USERS_FILE", "data/beta_users.json")
+    beta_auth_enabled: bool = _env_flag("BETA_AUTH_ENABLED", default=False)
+
     default_timezone: str = os.getenv("DEFAULT_TIMEZONE", "Europe/Paris")
     allow_trusted_faiss_deserialization: bool = _env_flag(
         "ALLOW_TRUSTED_FAISS_DESERIALIZATION",
@@ -61,6 +65,14 @@ class Settings:
     @property
     def profile_memories_path(self) -> Path:
         return self.project_root / self.profile_memories_file
+
+    @property
+    def user_data_root_path(self) -> Path:
+        return self.project_root / self.user_data_root
+
+    @property
+    def beta_users_path(self) -> Path:
+        return self.project_root / self.beta_users_file
 
     def require_anthropic_api_key(self) -> str:
         """Return the configured API key or fail with an actionable message."""

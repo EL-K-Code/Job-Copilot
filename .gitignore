@@ -31,6 +31,8 @@ data/faiss_index/
 # Local generated and private data
 data/applications.json
 data/profile_memories.json
+data/beta_users.json
+data/users/
 evaluation/results/
 
 # OS / editor files

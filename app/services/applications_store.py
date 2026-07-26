@@ -8,6 +8,7 @@ from tempfile import NamedTemporaryFile
 
 from app.config import settings
 from app.schemas import ApplicationRecord
+from app.tenancy import get_user_paths
 
 
 def _normalize_text(value: str) -> str:
@@ -21,8 +22,12 @@ def _is_same_application(a: ApplicationRecord, b: ApplicationRecord) -> bool:
     )
 
 
-def load_application_records() -> list[ApplicationRecord]:
-    path = settings.applications_path
+def _applications_path(user_id: str | None = None) -> Path:
+    return settings.applications_path if user_id is None else get_user_paths(user_id).applications
+
+
+def load_application_records(user_id: str | None = None) -> list[ApplicationRecord]:
+    path = _applications_path(user_id)
 
     if not path.exists():
         return []
@@ -75,40 +80,59 @@ def _atomic_json_write(path: Path, payload: list[dict]) -> None:
             temporary_path.unlink(missing_ok=True)
 
 
-def save_application_records(records: list[ApplicationRecord]) -> None:
+def save_application_records(
+    records: list[ApplicationRecord],
+    user_id: str | None = None,
+) -> None:
     _atomic_json_write(
-        settings.applications_path,
+        _applications_path(user_id),
         [record.model_dump() for record in records],
     )
 
 
-def find_existing_application(company: str, role: str) -> ApplicationRecord | None:
+def find_existing_application(
+    company: str,
+    role: str,
+    user_id: str | None = None,
+) -> ApplicationRecord | None:
     probe = ApplicationRecord(company=company, role=role)
 
-    for record in load_application_records():
+    for record in load_application_records(user_id=user_id):
         if _is_same_application(record, probe):
             return record
 
     return None
 
 
-def has_existing_reminder(company: str, role: str, reminder_date: str) -> bool:
-    existing = find_existing_application(company=company, role=role)
+def has_existing_reminder(
+    company: str,
+    role: str,
+    reminder_date: str,
+    user_id: str | None = None,
+) -> bool:
+    existing = find_existing_application(
+        company=company,
+        role=role,
+        user_id=user_id,
+    )
     if not existing:
         return False
 
     return _normalize_text(existing.reminder_date) == _normalize_text(reminder_date)
 
 
-def add_application_record(record: ApplicationRecord) -> bool:
-    records = load_application_records()
+def add_application_record(
+    record: ApplicationRecord,
+    user_id: str | None = None,
+) -> bool:
+    records = load_application_records(user_id=user_id)
 
     for existing in records:
         if _is_same_application(existing, record):
             return False
 
     records.append(record)
-    save_application_records(records)
+    save_application_records(records, user_id=user_id)
     return True
 
 
