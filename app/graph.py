@@ -65,11 +65,15 @@ def analyze_job_node(state: JobCopilotState) -> JobCopilotState:
 
 def retrieve_memory_node(state: JobCopilotState) -> JobCopilotState:
     query = state["retrieval_query"]
-    docs = retrieve_profile_context(
-        query,
-        k=EMAIL_RETRIEVAL_K,
-        user_id=state.get("user_id"),
-    )
+    user_id = state.get("user_id")
+    if user_id:
+        docs = retrieve_profile_context(
+            query,
+            k=EMAIL_RETRIEVAL_K,
+            user_id=user_id,
+        )
+    else:
+        docs = retrieve_profile_context(query, k=EMAIL_RETRIEVAL_K)
     retrieved_memory_records = memory_documents_to_records(docs)
     retrieved_memories = [record["content"] for record in retrieved_memory_records]
 
