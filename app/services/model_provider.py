@@ -10,6 +10,7 @@ from langchain_core.tools import BaseTool
 from langchain_openai import ChatOpenAI
 
 from app.config import settings
+from app.services.llm_telemetry import instrument_llm_runnable
 
 SUPPORTED_LLM_PROVIDERS = {"anthropic", "openai"}
 logger = logging.getLogger(__name__)
@@ -71,13 +72,17 @@ def active_provider_chain() -> tuple[str, ...]:
     return tuple(active)
 
 
+def provider_model_name(provider: str) -> str:
+    normalized = normalize_provider_name(provider)
+    return settings.openai_model if normalized == "openai" else settings.anthropic_model
+
+
 def configured_model_label() -> str:
     """Return an auditable provider/model label for reports and diagnostics."""
-    labels = []
-    for provider in active_provider_chain():
-        model = settings.openai_model if provider == "openai" else settings.anthropic_model
-        labels.append(f"{provider}:{model}")
-    return " -> ".join(labels)
+    return " -> ".join(
+        f"{provider}:{provider_model_name(provider)}"
+        for provider in active_provider_chain()
+    )
 
 
 def build_chat_model(provider: str):
@@ -107,18 +112,33 @@ def _with_fallbacks(runnables: Sequence[Runnable]) -> Runnable:
 
 
 def get_structured_chat_model(schema: type[Any]) -> Runnable:
-    """Return a structured-output runnable with optional cross-provider fallback."""
-    models = [
-        build_chat_model(provider).with_structured_output(schema)
-        for provider in active_provider_chain()
-    ]
+    """Return structured output with per-attempt provider telemetry and fallback."""
+    operation = schema.__name__
+    models = []
+    for provider in active_provider_chain():
+        runnable = build_chat_model(provider).with_structured_output(schema)
+        models.append(
+            instrument_llm_runnable(
+                runnable,
+                provider=provider,
+                model=provider_model_name(provider),
+                operation=operation,
+            )
+        )
     return _with_fallbacks(models)
 
 
 def get_tool_calling_chat_model(tools: list[BaseTool]) -> Runnable:
-    """Return a tool-bound agent model with optional cross-provider fallback."""
-    models = [
-        build_chat_model(provider).bind_tools(tools)
-        for provider in active_provider_chain()
-    ]
+    """Return a tool-bound agent model with provider telemetry and fallback."""
+    models = []
+    for provider in active_provider_chain():
+        runnable = build_chat_model(provider).bind_tools(tools)
+        models.append(
+            instrument_llm_runnable(
+                runnable,
+                provider=provider,
+                model=provider_model_name(provider),
+                operation="AgentChat",
+            )
+        )
     return _with_fallbacks(models)

@@ -100,7 +100,6 @@ def find_existing_application(
     for record in load_application_records(user_id=user_id):
         if _is_same_application(record, probe):
             return record
-
     return None
 
 
@@ -134,6 +133,38 @@ def add_application_record(
     records.append(record)
     save_application_records(records, user_id=user_id)
     return True
+
+
+def update_application_record(
+    company: str,
+    role: str,
+    *,
+    user_id: str | None = None,
+    status: str | None = None,
+    reminder_date: str | None = None,
+    notes: str | None = None,
+) -> ApplicationRecord | None:
+    """Update one tenant-scoped record and validate the complete result before saving."""
+
+    probe = ApplicationRecord(company=company, role=role)
+    records = load_application_records(user_id=user_id)
+    for index, record in enumerate(records):
+        if not _is_same_application(record, probe):
+            continue
+
+        payload = record.model_dump()
+        if status is not None:
+            payload["status"] = status
+        if reminder_date is not None:
+            payload["reminder_date"] = reminder_date
+        if notes is not None:
+            payload["notes"] = notes
+
+        updated = ApplicationRecord(**payload)
+        records[index] = updated
+        save_application_records(records, user_id=user_id)
+        return updated
+    return None
 
 
 def create_application_record(
