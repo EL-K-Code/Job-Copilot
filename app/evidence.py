@@ -65,7 +65,6 @@ _CLAIM_STOPWORDS = {
     "with",
 }
 
-
 _ALIAS_PATTERNS = (
     (r"\bretrieval augmented generation\b", "rag"),
     (r"\bnatural language processing\b", "nlp"),
@@ -152,22 +151,33 @@ def _claim_is_represented_in_body(claim_text: str, email_body: str) -> bool:
 
 def normalize_memory_records(
     memories: Iterable[dict[str, Any] | str],
-) -> list[dict[str, str]]:
-    """Return auditable memory records while preserving backwards compatibility."""
-    records: list[dict[str, str]] = []
+) -> list[dict[str, Any]]:
+    """Return auditable records while preserving optional atomic-memory metadata."""
+    records: list[dict[str, Any]] = []
     for index, memory in enumerate(memories, start=1):
         if isinstance(memory, str):
-            memory_id = f"memory_{index}"
-            memory_type = "unknown"
-            content = memory.strip()
+            record: dict[str, Any] = {
+                "id": f"memory_{index}",
+                "type": "unknown",
+                "content": memory.strip(),
+            }
         else:
-            memory_id = str(memory.get("id", "")).strip() or f"memory_{index}"
-            memory_type = str(memory.get("type", "unknown")).strip() or "unknown"
-            content = str(memory.get("content", "")).strip()
+            record = {
+                str(key): value
+                for key, value in memory.items()
+                if value is not None
+            }
+            record["id"] = str(record.get("id", "")).strip() or f"memory_{index}"
+            record["type"] = str(record.get("type", "unknown")).strip() or "unknown"
+            record["content"] = str(record.get("content", "")).strip()
+            if "topic" in record:
+                record["topic"] = str(record["topic"]).strip()
+            if "group_id" in record:
+                record["group_id"] = str(record["group_id"]).strip()
 
-        if not content:
+        if not record["content"]:
             continue
-        records.append({"id": memory_id, "type": memory_type, "content": content})
+        records.append(record)
 
     if not records:
         raise ValueError("At least one non-empty profile memory is required.")
@@ -176,7 +186,7 @@ def normalize_memory_records(
 
 def validate_claim_evidence(
     claims: Iterable[EvidenceBackedClaim],
-    memory_records: list[dict[str, str]],
+    memory_records: list[dict[str, Any]],
     *,
     email_body: str | None = None,
 ) -> None:
@@ -219,7 +229,7 @@ def validate_claim_evidence(
 
 def validate_grounded_email_draft(
     email_draft: EmailDraft,
-    memory_records: list[dict[str, str]],
+    memory_records: list[dict[str, Any]],
 ) -> None:
     """Validate the machine-readable evidence ledger attached to an email draft."""
     if not email_draft.claim_evidence:
