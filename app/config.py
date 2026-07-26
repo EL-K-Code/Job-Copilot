@@ -23,7 +23,7 @@ class Settings:
     llm_fallback_provider: str = os.getenv("LLM_FALLBACK_PROVIDER", "")
 
     openai_api_key: str = os.getenv("OPENAI_API_KEY", "")
-    openai_model: str = os.getenv("OPENAI_MODEL", "gpt-5-mini")
+    openai_model: str = os.getenv("OPENAI_MODEL", "gpt-4.1-mini")
 
     anthropic_api_key: str = os.getenv("ANTHROPIC_API_KEY", "")
     anthropic_model: str = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-6")
