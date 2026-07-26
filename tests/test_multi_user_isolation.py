@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import io
 import json
+import zipfile
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -151,5 +153,10 @@ def test_profile_export_contains_only_requested_user(monkeypatch, tmp_path):
     save_user_profile_memories("alice", alice_memories)
     exported = export_user_data("alice")
 
-    assert b"Alice uses Python" in exported
-    assert b"Bob uses SQL" not in exported
+    with zipfile.ZipFile(io.BytesIO(exported)) as archive:
+        contents = "\n".join(
+            archive.read(name).decode("utf-8") for name in archive.namelist()
+        )
+
+    assert "Alice uses Python" in contents
+    assert "Bob uses SQL" not in contents
