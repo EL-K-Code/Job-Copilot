@@ -6,6 +6,8 @@ from app.config import settings
 from app.tenancy import ensure_user_directories
 from app.tools.gmail_tools import google_token_exists
 from app.ui import premium_private_beta as premium
+from app.ui.application_workspace import render_application_workspace
+from app.ui.premium_polish import inject_premium_polish
 from app.ui.profile_workspace import render_profile_gate, render_profile_page
 
 
@@ -60,6 +62,7 @@ def main() -> None:
         initial_sidebar_state="expanded",
     )
     premium._inject_theme()
+    inject_premium_polish()
 
     user = premium._authenticated_user()
     if user is None:
@@ -78,7 +81,7 @@ def main() -> None:
     elif page == "Profile":
         render_profile_page(user_id)
     elif page == "New application":
-        premium._render_analysis(user_id)
+        render_application_workspace(user_id)
     elif page == "Agent Chat":
         premium._render_agent_chat(user_id)
     elif page == "Applications":
