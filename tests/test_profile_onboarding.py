@@ -9,6 +9,7 @@ from app.services import profile_onboarding
 from app.services.profile_onboarding import (
     CVDocument,
     CVTextExtractionError,
+    MAX_PROFILE_FACTS,
     ProfileExtraction,
     ProfileFactDraft,
     build_profile_memories,
@@ -16,6 +17,7 @@ from app.services.profile_onboarding import (
     extract_profile_facts,
     manual_profile_to_review_rows,
     prepare_cv_documents,
+    prepare_profile_extraction_input,
 )
 
 
@@ -67,9 +69,63 @@ def test_prepare_cv_documents_enforces_file_count():
         prepare_cv_documents(uploads)
 
 
+def test_profile_input_removes_only_exact_normalized_duplicate_lines():
+    prepared = prepare_profile_extraction_input(
+        [
+            CVDocument(
+                filename="cv-ai.txt",
+                text="Python\nBuilt a data pipeline.\nShared achievement",
+            ),
+            CVDocument(
+                filename="cv-data.txt",
+                text=" python \nBuilt an analytics dashboard.\nShared achievement",
+            ),
+        ]
+    )
+
+    assert prepared.duplicate_lines_removed == 2
+    assert prepared.unique_lines == 4
+    assert prepared.text.casefold().count("python") == 1
+    assert prepared.text.casefold().count("shared achievement") == 1
+    assert "Built a data pipeline." in prepared.text
+    assert "Built an analytics dashboard." in prepared.text
+    assert "===== FILE: cv-ai.txt =====" in prepared.text
+    assert "===== FILE: cv-data.txt =====" in prepared.text
+    assert prepared.prompt_chars < prepared.original_chars + 100
+
+
+def test_profile_input_does_not_fuzzy_delete_distinct_facts():
+    prepared = prepare_profile_extraction_input(
+        [
+            CVDocument(filename="a.txt", text="Built a pipeline."),
+            CVDocument(filename="b.txt", text="Built a data pipeline."),
+        ]
+    )
+
+    assert prepared.duplicate_lines_removed == 0
+    assert "Built a pipeline." in prepared.text
+    assert "Built a data pipeline." in prepared.text
+
+
+def test_profile_extraction_schema_caps_generated_fact_count():
+    assert MAX_PROFILE_FACTS == 48
+    facts = [
+        ProfileFactDraft(
+            type="skill",
+            content=f"The candidate uses tool {index}.",
+        )
+        for index in range(MAX_PROFILE_FACTS + 1)
+    ]
+    with pytest.raises(ValueError):
+        ProfileExtraction(facts=facts)
+
+
 def test_extract_profile_facts_deduplicates_and_constrains_source(monkeypatch):
+    captured_messages = []
+
     class FakeRunnable:
-        def invoke(self, _messages):
+        def invoke(self, messages):
+            captured_messages.extend(messages)
             return ProfileExtraction(
                 facts=[
                     ProfileFactDraft(
@@ -102,13 +158,19 @@ def test_extract_profile_facts_deduplicates_and_constrains_source(monkeypatch):
         lambda _schema: FakeRunnable(),
     )
 
-    extraction = extract_profile_facts(
-        [CVDocument(filename="cv.pdf", text="LangGraph and Python")]
-    )
+    documents = [
+        CVDocument(
+            filename="cv.pdf",
+            text="LangGraph and Python\nLangGraph and Python",
+        )
+    ]
+    prepared = prepare_profile_extraction_input(documents)
+    extraction = extract_profile_facts(documents, prepared_input=prepared)
 
     assert len(extraction.facts) == 2
     assert extraction.facts[0].source_file == "cv.pdf"
     assert extraction.facts[1].source_file == "CV import"
+    assert captured_messages[-1].content.count("LangGraph and Python") == 1
 
 
 def test_manual_profile_creates_one_review_row_per_non_empty_line():

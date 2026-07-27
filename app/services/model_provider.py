@@ -13,6 +13,7 @@ from app.config import settings
 from app.services.llm_telemetry import instrument_llm_runnable
 
 SUPPORTED_LLM_PROVIDERS = {"anthropic", "openai"}
+_PROFILE_EXTRACTION_OPERATION = "ProfileExtraction"
 logger = logging.getLogger(__name__)
 
 
@@ -77,6 +78,14 @@ def provider_model_name(provider: str) -> str:
     return settings.openai_model if normalized == "openai" else settings.anthropic_model
 
 
+def provider_profile_model_name(provider: str) -> str:
+    """Return the low-latency model reserved for CV profile extraction."""
+    normalized = normalize_provider_name(provider)
+    if normalized == "openai":
+        return settings.openai_profile_model or settings.openai_model
+    return settings.anthropic_profile_model or settings.anthropic_model
+
+
 def configured_model_label() -> str:
     """Return an auditable provider/model label for reports and diagnostics."""
     return " -> ".join(
@@ -85,18 +94,19 @@ def configured_model_label() -> str:
     )
 
 
-def build_chat_model(provider: str):
+def build_chat_model(provider: str, *, model_name: str | None = None):
     """Build one provider-specific LangChain chat model without silent fallback."""
     normalized = normalize_provider_name(provider)
+    selected_model = model_name or provider_model_name(normalized)
     if normalized == "openai":
         return ChatOpenAI(
-            model=settings.openai_model,
+            model=selected_model,
             temperature=0,
             api_key=settings.require_openai_api_key(),
         )
 
     return ChatAnthropic(
-        model=settings.anthropic_model,
+        model=selected_model,
         temperature=0,
         api_key=settings.require_anthropic_api_key(),
     )
@@ -111,20 +121,34 @@ def _with_fallbacks(runnables: Sequence[Runnable]) -> Runnable:
     return primary.with_fallbacks(list(fallbacks), exceptions_to_handle=(Exception,))
 
 
+def _structured_model_candidates(provider: str, operation: str) -> tuple[str, ...]:
+    """Choose a fast extraction model first, then the normal model as a safe fallback."""
+    standard_model = provider_model_name(provider)
+    if operation != _PROFILE_EXTRACTION_OPERATION:
+        return (standard_model,)
+
+    profile_model = provider_profile_model_name(provider)
+    return tuple(dict.fromkeys((profile_model, standard_model)))
+
+
 def get_structured_chat_model(schema: type[Any]) -> Runnable:
     """Return structured output with per-attempt provider telemetry and fallback."""
     operation = schema.__name__
     models = []
     for provider in active_provider_chain():
-        runnable = build_chat_model(provider).with_structured_output(schema)
-        models.append(
-            instrument_llm_runnable(
-                runnable,
-                provider=provider,
-                model=provider_model_name(provider),
-                operation=operation,
+        for model_name in _structured_model_candidates(provider, operation):
+            runnable = build_chat_model(
+                provider,
+                model_name=model_name,
+            ).with_structured_output(schema)
+            models.append(
+                instrument_llm_runnable(
+                    runnable,
+                    provider=provider,
+                    model=model_name,
+                    operation=operation,
+                )
             )
-        )
     return _with_fallbacks(models)
 
 
@@ -132,12 +156,13 @@ def get_tool_calling_chat_model(tools: list[BaseTool]) -> Runnable:
     """Return a tool-bound agent model with provider telemetry and fallback."""
     models = []
     for provider in active_provider_chain():
-        runnable = build_chat_model(provider).bind_tools(tools)
+        model_name = provider_model_name(provider)
+        runnable = build_chat_model(provider, model_name=model_name).bind_tools(tools)
         models.append(
             instrument_llm_runnable(
                 runnable,
                 provider=provider,
-                model=provider_model_name(provider),
+                model=model_name,
                 operation="AgentChat",
             )
         )

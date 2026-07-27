@@ -38,9 +38,17 @@ class Settings:
 
     openai_api_key: str = os.getenv("OPENAI_API_KEY", "")
     openai_model: str = os.getenv("OPENAI_MODEL", "gpt-4.1-mini")
+    openai_profile_model: str = os.getenv(
+        "OPENAI_PROFILE_MODEL",
+        "gpt-4.1-nano",
+    )
 
     anthropic_api_key: str = os.getenv("ANTHROPIC_API_KEY", "")
     anthropic_model: str = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-6")
+    anthropic_profile_model: str = os.getenv(
+        "ANTHROPIC_PROFILE_MODEL",
+        os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-6"),
+    )
 
     google_client_secret_file: str = os.getenv(
         "GOOGLE_CLIENT_SECRET_FILE", "credentials.json"
