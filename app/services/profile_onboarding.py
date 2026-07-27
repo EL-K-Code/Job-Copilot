@@ -17,7 +17,9 @@ from app.services.model_provider import get_structured_chat_model
 
 MAX_CV_FILES = 5
 MAX_FILE_BYTES = 10 * 1024 * 1024
+MAX_RAW_TOTAL_TEXT_CHARS = 500_000
 MAX_TOTAL_TEXT_CHARS = 120_000
+MAX_PROFILE_FACTS = 48
 PROFILE_TYPES = (
     "identity",
     "experience",
@@ -42,7 +44,7 @@ ProfileType = Literal[
 ]
 
 
-PROFILE_EXTRACTION_SYSTEM_PROMPT = """
+PROFILE_EXTRACTION_SYSTEM_PROMPT = f"""
 You extract a candidate profile from one or more CV documents for JobCopilot.
 
 Return only facts explicitly supported by the supplied CV text. Every fact will be
@@ -50,6 +52,9 @@ shown to the user for approval before it becomes usable evidence.
 
 Rules:
 - Produce atomic facts: one independently verifiable statement per item.
+- Return no more than {MAX_PROFILE_FACTS} high-value facts. Prioritize concrete
+  experience, projects, education, technical skills, languages, certifications,
+  achievements, and role preferences that can help tailor applications.
 - Never infer proficiency, ownership, scale, production use, leadership, dates,
   results, recency, or technologies that are not explicit in the CV.
 - Preserve conservative wording. Prefer a narrower fact over a stronger paraphrase.
@@ -72,6 +77,16 @@ class CVDocument(BaseModel):
     text: str
 
 
+class ProfileExtractionInput(BaseModel):
+    """Compacted prompt payload and non-sensitive performance metadata."""
+
+    text: str
+    original_chars: int = Field(ge=1)
+    prompt_chars: int = Field(ge=1)
+    duplicate_lines_removed: int = Field(ge=0)
+    unique_lines: int = Field(ge=1)
+
+
 class ProfileFactDraft(BaseModel):
     type: ProfileType
     content: str = Field(min_length=1)
@@ -86,7 +101,10 @@ class ProfileFactDraft(BaseModel):
 
 
 class ProfileExtraction(BaseModel):
-    facts: list[ProfileFactDraft] = Field(default_factory=list)
+    facts: list[ProfileFactDraft] = Field(
+        default_factory=list,
+        max_length=MAX_PROFILE_FACTS,
+    )
 
 
 class CVTextExtractionError(ValueError):
@@ -170,28 +188,85 @@ def prepare_cv_documents(
         raise CVTextExtractionError(f"Upload no more than {MAX_CV_FILES} CV files at once.")
 
     documents = [extract_cv_text(filename, payload) for filename, payload in uploads]
-    total_chars = sum(len(document.text) for document in documents)
-    if total_chars > MAX_TOTAL_TEXT_CHARS:
+    raw_total_chars = sum(len(document.text) for document in documents)
+    if raw_total_chars > MAX_RAW_TOTAL_TEXT_CHARS:
         raise CVTextExtractionError(
-            "The combined CV text is too long. Upload fewer or shorter CV versions."
+            "The combined extracted CV text is unusually large. Upload fewer or shorter CV versions."
         )
     return documents
 
 
-def extract_profile_facts(documents: Sequence[CVDocument]) -> ProfileExtraction:
+def prepare_profile_extraction_input(
+    documents: Sequence[CVDocument],
+) -> ProfileExtractionInput:
+    """
+    Remove only exact normalized line duplicates before the paid model call.
+
+    Role-specific CV versions often repeat most headings, skills and experience bullets.
+    Keeping the first exact occurrence preserves every unique line while reducing prompt size,
+    latency and cost. No semantic rewriting or fuzzy deletion is performed.
+    """
+    if not documents:
+        raise ValueError("At least one extracted CV document is required.")
+
+    seen_lines: set[str] = set()
+    sections: list[str] = []
+    duplicate_lines_removed = 0
+    unique_lines = 0
+    original_chars = sum(len(document.text) for document in documents)
+
+    for document in documents:
+        kept_lines: list[str] = []
+        for line in document.text.splitlines():
+            normalized = " ".join(line.split())
+            if not normalized:
+                continue
+            fingerprint = normalized.casefold()
+            if fingerprint in seen_lines:
+                duplicate_lines_removed += 1
+                continue
+            seen_lines.add(fingerprint)
+            kept_lines.append(normalized)
+            unique_lines += 1
+
+        if kept_lines:
+            sections.append(
+                f"===== FILE: {document.filename} =====\n" + "\n".join(kept_lines)
+            )
+
+    document_text = "\n\n".join(sections).strip()
+    if not document_text:
+        raise CVTextExtractionError("No usable CV text remained after exact deduplication.")
+    if len(document_text) > MAX_TOTAL_TEXT_CHARS:
+        raise CVTextExtractionError(
+            "The unique CV text is still too long after removing exact duplicates. "
+            "Upload fewer or shorter CV versions."
+        )
+
+    return ProfileExtractionInput(
+        text=document_text,
+        original_chars=original_chars,
+        prompt_chars=len(document_text),
+        duplicate_lines_removed=duplicate_lines_removed,
+        unique_lines=unique_lines,
+    )
+
+
+def extract_profile_facts(
+    documents: Sequence[CVDocument],
+    *,
+    prepared_input: ProfileExtractionInput | None = None,
+) -> ProfileExtraction:
     if not documents:
         raise ValueError("At least one extracted CV document is required.")
 
     source_names = {document.filename for document in documents}
-    document_text = "\n\n".join(
-        f"===== FILE: {document.filename} =====\n{document.text}"
-        for document in documents
-    )
+    effective_input = prepared_input or prepare_profile_extraction_input(documents)
     structured_llm = get_structured_chat_model(ProfileExtraction)
     result = structured_llm.invoke(
         [
             SystemMessage(content=PROFILE_EXTRACTION_SYSTEM_PROMPT),
-            HumanMessage(content=f"CV documents:\n\n{document_text}"),
+            HumanMessage(content=f"CV documents:\n\n{effective_input.text}"),
         ]
     )
 
@@ -260,7 +335,7 @@ def manual_profile_to_review_rows(sections: dict[str, str]) -> list[dict[str, An
 
 def _slug(value: str, *, fallback: str) -> str:
     normalized = re.sub(r"[^a-z0-9]+", "_", value.casefold()).strip("_")
-    return (normalized[:64].rstrip("_") or fallback)
+    return normalized[:64].rstrip("_") or fallback
 
 
 def _stable_memory_id(category: str, content: str) -> str:
