@@ -13,3 +13,4 @@ class JobCopilotState(TypedDict, total=False):
     retrieved_memory_records: list[dict]
     match_insight: dict
     email_draft: dict
+    application_pack: dict

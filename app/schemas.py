@@ -6,6 +6,23 @@ from typing import Literal
 from pydantic import BaseModel, Field, field_validator
 
 
+ApplicationChannel = Literal[
+    "ats_portal",
+    "email",
+    "linkedin",
+    "academic",
+    "unknown",
+]
+ApplicationOutput = Literal[
+    "cv_tailoring",
+    "ats_answers",
+    "cover_letter",
+    "recruiter_message",
+    "application_email",
+    "interview_prep",
+]
+
+
 class JobAnalysis(BaseModel):
     company: str = Field(
         default="Unknown",
@@ -55,13 +72,33 @@ class JobAnalysis(BaseModel):
         default_factory=list,
         description="The most important points a candidate should highlight to match this role.",
     )
+    application_channel: ApplicationChannel = Field(
+        default="unknown",
+        description=(
+            "Explicit application route stated in the offer. Use ats_portal for a careers "
+            "page, form, Easy Apply or ATS; email for an explicit application email route; "
+            "linkedin for explicit LinkedIn outreach; academic for research or academic "
+            "submission instructions; otherwise unknown."
+        ),
+    )
+    application_instructions: list[str] = Field(
+        default_factory=list,
+        description="Explicit instructions explaining how the candidate should apply.",
+    )
+    requested_materials: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Materials explicitly requested, such as CV, cover letter, portfolio, references, "
+            "transcript, research statement or short-answer responses."
+        ),
+    )
 
 
 class EvidenceBackedClaim(BaseModel):
     claim: str = Field(
         description=(
-            "A conservative factual candidate claim that can be copied into the email "
-            "without adding strength, ownership, scale, recency, or production context."
+            "A conservative factual candidate claim that can be copied into an application "
+            "output without adding strength, ownership, scale, recency, or production context."
         )
     )
     supporting_memory_ids: list[str] = Field(
@@ -120,7 +157,7 @@ class MatchInsight(BaseModel):
         default_factory=list,
         description=(
             "Candidate claims that are directly supported by identified retrieved memories. "
-            "These claims form the factual evidence plan for email generation."
+            "These claims form the factual evidence plan for application outputs."
         ),
     )
 
@@ -131,12 +168,12 @@ class EmailEvidenceSelection(BaseModel):
         max_length=3,
         description=(
             "One to three retrieved memory IDs containing the strongest directly relevant "
-            "candidate evidence for the application email."
+            "candidate evidence for the application pack."
         ),
     )
     tone: Literal["professional", "warm", "concise", "premium"] = Field(
         default="professional",
-        description="Tone used by the deterministic email composer.",
+        description="Tone used by deterministic application composers.",
     )
 
     @field_validator("selected_memory_ids")
@@ -195,6 +232,58 @@ class EmailDraft(BaseModel):
         if not value.strip():
             raise ValueError("Email body cannot be empty.")
         return value.strip()
+
+
+class GroundedApplicationText(BaseModel):
+    title: str = Field(description="User-facing label for this application output.")
+    text: str = Field(description="Editable deterministic application text.")
+    claim_evidence: list[EvidenceBackedClaim] = Field(
+        default_factory=list,
+        description=(
+            "Evidence ledger for factual candidate claims included in this specific output. "
+            "Offer-only or procedural wording does not require candidate evidence."
+        ),
+    )
+
+    @field_validator("title", "text")
+    @classmethod
+    def validate_required_text(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("Application output title and text cannot be empty.")
+        return normalized
+
+
+class ApplicationPack(BaseModel):
+    channel: ApplicationChannel = "unknown"
+    route_label: str = Field(description="Plain-language description of the recommended route.")
+    recommended_outputs: list[ApplicationOutput] = Field(default_factory=list)
+    cv_highlights: list[EvidenceBackedClaim] = Field(default_factory=list)
+    missing_job_terms: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Explicit job terms not covered by the selected verified claims. These are gaps or "
+            "review prompts and must never be presented as candidate skills."
+        ),
+    )
+    ats_answers: list[GroundedApplicationText] = Field(default_factory=list)
+    cover_letter: GroundedApplicationText
+    recruiter_message: GroundedApplicationText
+    interview_questions: list[str] = Field(default_factory=list)
+    application_email: EmailDraft
+
+    @field_validator("route_label")
+    @classmethod
+    def validate_route_label(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("Application route label cannot be empty.")
+        return normalized
+
+    @field_validator("recommended_outputs", "missing_job_terms", "interview_questions")
+    @classmethod
+    def normalize_pack_lists(cls, value: list[str]) -> list[str]:
+        return list(dict.fromkeys(str(item).strip() for item in value if str(item).strip()))
 
 
 class ApplicationRecord(BaseModel):

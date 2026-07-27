@@ -47,7 +47,8 @@ def build_agent_tools(user_id: str | None = None) -> list[BaseTool]:
     def run_jobcopilot_pipeline_tool(job_text: str) -> dict[str, Any]:
         """
         Run the full JobCopilot pipeline on a job offer using the current user's
-        private profile memory, then return the structured analysis, match and email.
+        private profile memory. Return the structured role analysis, evidence match,
+        recommended application route and grounded application pack.
         """
         from app.graph import jobcopilot_graph
 
@@ -73,6 +74,7 @@ def build_agent_tools(user_id: str | None = None) -> list[BaseTool]:
             "job_analysis": result["job_analysis"],
             "retrieved_memories": result["retrieved_memories"],
             "match_insight": result["match_insight"],
+            "application_pack": result["application_pack"],
             "email_draft": result["email_draft"],
         }
 
