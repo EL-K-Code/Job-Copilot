@@ -5,6 +5,8 @@ from uuid import uuid4
 
 from langchain_core.tools import BaseTool, tool
 
+from app.auth import load_beta_users
+from app.config import settings
 from app.services.applications_store import (
     add_application_record,
     create_application_record,
@@ -12,7 +14,7 @@ from app.services.applications_store import (
     has_existing_reminder,
     load_application_records,
 )
-from app.tenancy import normalize_user_id
+from app.tenancy import DEFAULT_LOCAL_USER_ID, normalize_user_id
 from app.tools.calendar_tools import (
     build_followup_event_payload,
     create_followup_event,
@@ -20,12 +22,24 @@ from app.tools.calendar_tools import (
 from app.tools.gmail_tools import create_gmail_draft
 
 
+def _candidate_name_for_user(user_id: str | None) -> str:
+    """Resolve a trusted server-side display name without exposing it to tool inputs."""
+    if user_id is None:
+        return settings.local_candidate_name
+    if user_id == DEFAULT_LOCAL_USER_ID:
+        return settings.local_candidate_name
+    if not settings.beta_auth_enabled:
+        return ""
+    user = load_beta_users().get(user_id, {})
+    return str(user.get("display_name", "")).strip()
+
+
 def build_agent_tools(user_id: str | None = None) -> list[BaseTool]:
     """
     Build one tool set bound to exactly one authenticated workspace.
 
-    The bound user ID is intentionally absent from every public tool schema, so the
-    language model cannot select, replace or spoof the tenant at runtime.
+    The bound user ID and candidate display name are intentionally absent from every
+    public tool schema, so the language model cannot select, replace or spoof either value.
     """
     bound_user_id = normalize_user_id(user_id) if user_id is not None else None
 
@@ -37,7 +51,10 @@ def build_agent_tools(user_id: str | None = None) -> list[BaseTool]:
         """
         from app.graph import jobcopilot_graph
 
-        state: dict[str, Any] = {"job_text": job_text}
+        state: dict[str, Any] = {
+            "job_text": job_text,
+            "candidate_name": _candidate_name_for_user(bound_user_id),
+        }
         if bound_user_id is not None:
             state["user_id"] = bound_user_id
 
@@ -82,7 +99,6 @@ def build_agent_tools(user_id: str | None = None) -> list[BaseTool]:
                     "body": body,
                 },
             }
-
         result = create_gmail_draft(
             to=to,
             subject=subject,
@@ -128,7 +144,6 @@ def build_agent_tools(user_id: str | None = None) -> list[BaseTool]:
                 "status": "duplicate",
                 "message": "A saved application already has this same reminder date.",
             }
-
         payload = build_followup_event_payload(
             company=company,
             role=role,
@@ -212,7 +227,7 @@ def build_agent_tools(user_id: str | None = None) -> list[BaseTool]:
     ]
 
 
-# Backward-compatible local tool set used by the original single-user app.
+# Backward-compatible unbound tools used by command-line and test callers.
 AGENT_TOOLS = build_agent_tools()
 (
     run_jobcopilot_pipeline_tool,
