@@ -21,7 +21,7 @@ Agent Chat uses a separate tool set, LangGraph instance, in-memory checkpointer 
 
 ## Configure the LLM provider
 
-JobCopilot supports OpenAI and Anthropic for structured extraction, matching, evidence selection and Agent Chat.
+JobCopilot supports OpenAI and Anthropic for structured extraction, matching, evidence selection, CV profile extraction and Agent Chat.
 
 ```env
 LLM_PROVIDER=openai
@@ -64,7 +64,28 @@ streamlit run app/ui/private_beta_app.py \
   --server.port 8501
 ```
 
-The user uploads a verified atomic profile-memory JSON during onboarding. Job analysis, FAISS retrieval, application persistence, Agent Chat, Gmail drafts and Calendar events then use that authenticated user's workspace only.
+## Profile onboarding
+
+A normal tester never needs to create or edit the internal atomic-memory JSON directly.
+
+The first-use screen offers three routes:
+
+1. **Import CVs** — up to five PDF, DOCX or TXT files can be combined. Text is extracted locally; the original files are not persisted. After explicit consent, extracted text is sent to the configured LLM to propose conservative atomic facts.
+2. **Fill manually** — guided fields cover professional summary, experience, projects, education, technical skills, languages, certifications, achievements and career preferences.
+3. **Advanced restore** — a previously exported `profile_memories.json` file can be restored after review.
+
+Every route ends in the same editable review table. The user can keep, edit, delete or add facts. Nothing becomes application evidence until the user activates the reviewed profile.
+
+The dedicated **Profile** page then supports:
+
+- reviewing all current verified facts and their sources;
+- importing another CV version;
+- adding facts manually;
+- merging verified facts with the active profile;
+- replacing the profile after explicit review;
+- rebuilding the tenant-scoped FAISS index through the existing profile store.
+
+Image-only scanned PDFs do not use OCR in the private beta. Users should provide a text PDF, DOCX or TXT file instead.
 
 ## Tenant-safe Agent Chat
 
@@ -96,6 +117,8 @@ The Settings page supports:
 - export of profile memories and application records;
 - deletion of the complete private workspace, including Google tokens and FAISS indexes;
 - explicit display of whether Google is connected for the current user.
+
+Provider telemetry stores provider, model, operation, status, latency and available token counts. It deliberately excludes prompts, CV text, generated content, API keys and raw provider errors.
 
 ## Current boundary
 
