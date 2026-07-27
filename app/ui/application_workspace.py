@@ -17,7 +17,7 @@ from app.services.llm_telemetry import (
     serialize_llm_events,
     summarize_llm_events,
 )
-from app.services.usage_quota import UsageQuotaExceeded
+from app.services.usage_quota import UsageQuotaExceeded, consume_ai_operation
 from app.tools.calendar_tools import build_followup_event_payload, create_followup_event
 from app.tools.gmail_tools import create_gmail_draft, google_token_exists
 
@@ -68,6 +68,7 @@ def _run_pipeline(
 ) -> dict:
     from app.graph import jobcopilot_graph
 
+    consume_ai_operation(user_id, "application_analysis")
     with capture_llm_telemetry() as events:
         result = jobcopilot_graph.invoke(
             {
