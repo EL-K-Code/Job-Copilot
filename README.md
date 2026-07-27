@@ -2,328 +2,151 @@
 
 # JobCopilot
 
-### Evidence-grounded, human-supervised agentic AI for job applications
+### Evidence-grounded, human-supervised AI for job applications
 
-JobCopilot turns a raw job description into a structured and reviewable workflow: offer extraction, semantic profile retrieval, candidate-to-role matching, tailored email drafting, local application tracking and explicitly approved Gmail or Calendar actions.
+JobCopilot turns a raw job description into a structured, reviewable application workflow: offer extraction, profile-memory retrieval, conservative matching, evidence-only email composition, application tracking, Gmail drafts and Calendar follow-ups.
 
 ![Python](https://img.shields.io/badge/Python-3.11+-3776AB?logo=python&logoColor=white)
 ![LangGraph](https://img.shields.io/badge/LangGraph-Agent%20Orchestration-1C3C3C)
-![Streamlit](https://img.shields.io/badge/Streamlit-Interactive%20UI-FF4B4B?logo=streamlit&logoColor=white)
+![Streamlit](https://img.shields.io/badge/Streamlit-Private%20Beta-FF4B4B?logo=streamlit&logoColor=white)
 ![CI](https://github.com/EL-K-Code/Job-Copilot/actions/workflows/ci.yml/badge.svg)
-![Status](https://img.shields.io/badge/Status-Local%20Engineering%20MVP-2E8B57)
+![Status](https://img.shields.io/badge/Status-Private%20Beta-315EFB)
 
 </div>
 
 ---
 
-## Why this project exists
+## Product workflow
 
-Job applications are repetitive and often written from generic summaries rather than verifiable candidate evidence.
+```text
+CV import or manual profile
+        ↓
+human-verified atomic profile facts
+        ↓
+job description extraction
+        ↓
+tenant-scoped FAISS retrieval
+        ↓
+evidence-aware matching
+        ↓
+LLM selects memory IDs only
+        ↓
+deterministic email composition
+        ↓
+human review
+        ↓
+tracker / Gmail draft / Calendar follow-up
+```
 
-JobCopilot explores a safer workflow:
-
-1. extract requirements explicitly stated in an offer;
-2. retrieve only relevant candidate memories;
-3. separate strengths, gaps and positioning suggestions;
-4. draft an email from the retrieved evidence;
-5. keep the human in control before external side effects;
-6. track the application and prepare a follow-up;
-7. measure extraction, retrieval and grounding rather than relying on screenshots alone.
-
-The project is not designed for indiscriminate mass applications. It is a **traceable, local and supervised AI engineering case study**.
+JobCopilot is deliberately not a mass-application bot. It prefers a shorter, honest email over a persuasive claim that cannot be supported by the candidate's verified profile.
 
 ---
 
-## Recruiter quick scan
+## Current capabilities
 
-| Capability | Current implementation |
+| Capability | Implementation |
 | --- | --- |
-| Structured job understanding | Anthropic LLM output validated with Pydantic |
-| Candidate memory | Hugging Face embeddings and FAISS retrieval |
-| Evidence-aware matching | Explicit strengths, gaps and relevant profile memories |
-| Email generation | Structured and editable application draft |
-| Deterministic orchestration | Stateless LangGraph pipeline |
-| Conversational orchestration | LangGraph tool-calling agent with isolated chat threads |
-| Gmail and Calendar | Local Google OAuth with explicit confirmation gates |
-| Persistence | Atomic local JSON writes with duplicate checks |
-| Evaluation | Stratified smoke suite, 50-offer benchmark, retrieval and grounding protocols |
-| Delivery | Streamlit UI, Dockerfile and GitHub Actions CI |
+| Job understanding | Pydantic structured output through OpenAI or Anthropic |
+| Profile onboarding | Multiple PDF, DOCX or TXT CVs, or a guided manual form |
+| Human verification | Editable keep/remove review before profile activation |
+| Candidate memory | Atomic facts with stable IDs, topics, groups and provenance |
+| Retrieval | Hugging Face embeddings and tenant-scoped FAISS indexes |
+| Matching | Strengths, gaps and evidence-linked candidate claims |
+| Email composition | Deterministic prose built from selected verified memory IDs |
+| Signature | Authenticated display name, or configured local candidate name |
+| Provider resilience | OpenAI primary with optional Anthropic runtime fallback |
+| Provider telemetry | Provider, model, operation, status, latency and available usage metadata |
+| Application tracking | Tenant-scoped JSON tracker with status, notes and reminders |
+| Gmail and Calendar | Per-user OAuth token and explicit human confirmation gates |
+| Agent Chat | Per-user graph, tool set, thread namespace and in-memory checkpoint |
+| Cost control | Configurable daily AI-operation quota per user |
+| Evaluation | Extraction, retrieval and claim-level grounding workflows |
+| Delivery | Premium Streamlit UI, Dockerfile and GitHub Actions CI |
 
 ---
 
-## System architecture
+## Grounding architecture
 
-```mermaid
-flowchart LR
-    A[Raw job description] --> B[Structured job analysis]
-    B --> C[Profile-memory retrieval]
-    C --> D[Evidence-aware match]
-    D --> E[Editable email draft]
-    E --> F{Human review}
-    F -->|Approve| G[Save local record]
-    F -->|Explicitly confirm| H[Create Gmail draft]
-    F -->|Explicitly confirm| I[Create Calendar event]
-```
+The language model does not write factual candidate prose freely.
 
-### Deterministic pipeline
+1. Retrieved profile facts are ranked against explicit offer requirements.
+2. The LLM may select only one to three existing memory IDs.
+3. Deterministic code converts the exact selected memories into first-person claims.
+4. Every factual claim is returned in a machine-readable evidence ledger.
+5. Unknown IDs, zero-score padding and unsupported strengthening are rejected.
+
+Examples of disallowed amplification include turning:
+
+- `built` into `designed`;
+- `works with` into `strong proficiency`;
+- one project into `multiple projects`;
+- local experimentation into production ownership;
+- one technology into adjacent technologies that were never verified.
+
+---
+
+## Private beta isolation
+
+Each authenticated user receives a private workspace:
 
 ```text
-analyze_job
-    -> retrieve_memory
-    -> generate_match
-    -> generate_email
+data/users/<user_id>/
+  profile_memories.json
+  applications.json
+  google_token.json
+  usage.json
+  faiss_index/
+  uploads/
 ```
 
-The deterministic graph is stateless. Separate analyses therefore do not share a workflow checkpoint.
+The user ID is normalized and validated before any path is resolved. Agent tools receive the authenticated user through Python closures; the model cannot submit or modify a `user_id` tool argument.
 
-### Tool-calling agent
-
-The conversational agent can:
-
-- run the JobCopilot pipeline;
-- preview Gmail and Calendar actions;
-- save application records;
-- list saved applications.
-
-Gmail and Calendar tools require `confirmed=true`. The agent must show the exact action and request confirmation before the side effect is allowed.
+The filesystem backend is suitable for a controlled engineering beta. Public production deployment still requires durable database storage, managed authentication, encrypted persistent chat history, rate limiting and managed secrets.
 
 ---
 
-## Reliability and safety choices
+## Provider configuration
 
-### Structured outputs
-
-`JobAnalysis`, `MatchInsight`, `EmailDraft` and `ApplicationRecord` are validated with Pydantic. Required text, reminder dates, email subjects and ISO timestamps have explicit validation boundaries.
-
-### Evidence grounding
-
-The matching prompt is restricted to the structured offer and retrieved candidate memories. The email prompt must not convert a suggestion or unsupported skill into a candidate claim.
-
-### Contract-type guardrail
-
-The job title and contract type are treated as separate evidence. Words such as `Intern`, `Apprentice`, `Fellow`, `Consultant` or `Freelance` inside a title do not determine `contract_type`. The field must be `Unknown` unless the offer explicitly states the employment or contract type.
-
-### External-action approval
-
-The agent cannot create a Gmail draft or Calendar event only because a user mentioned one. It first returns a preview and requires explicit confirmation of the final values.
-
-### Safer FAISS handling
-
-Persisted LangChain FAISS stores include pickle-backed metadata. Deserialization is disabled by default. JobCopilot rebuilds the in-memory index from auditable JSON and caches it for the process lifetime.
-
-Loading a persisted index requires:
+Copy `.env.example` to `.env` and configure at least one provider:
 
 ```env
-ALLOW_TRUSTED_FAISS_DESERIALIZATION=true
+LLM_PROVIDER=openai
+OPENAI_API_KEY=your_local_key
+OPENAI_MODEL=gpt-4.1-mini
+
+# Optional runtime fallback
+LLM_FALLBACK_PROVIDER=anthropic
+ANTHROPIC_API_KEY=
+ANTHROPIC_MODEL=claude-sonnet-4-6
 ```
 
-Enable this only for an index generated locally and kept on a trusted machine.
+The primary provider must have a configured key. A fallback without a key is skipped.
 
-### Atomic local persistence
+Telemetry deliberately excludes:
 
-Application records are written through a temporary file and atomically replace the target JSON file. Invalid JSON raises an explicit error instead of silently behaving like an empty database.
-
-### Input validation
-
-Before Gmail or Calendar calls, JobCopilot validates:
-
-- email addresses;
-- empty bodies and subjects;
-- newline-based header injection attempts;
-- follow-up date format;
-- event start and end ordering.
-
-See [`SECURITY.md`](SECURITY.md) for the complete trust model.
+- prompts;
+- CV and job-offer text;
+- generated emails;
+- API keys;
+- raw provider error messages.
 
 ---
 
-## Public demo data and private profile data
+## Daily beta quotas
 
-The repository ships with a fictional candidate profile:
+A paid AI action consumes one quota unit:
 
-```text
-data/profile_memories.example.json
-```
+- one CV extraction;
+- one application analysis;
+- one authenticated Agent Chat turn.
 
-For a personal local profile:
-
-1. copy the example to `data/profile_memories.json`;
-2. replace the entries with verified evidence;
-3. set:
+Configure the daily limit:
 
 ```env
-PROFILE_MEMORIES_FILE=data/profile_memories.json
+BETA_DAILY_AI_LIMIT=10
 ```
 
-Private profile data, OAuth credentials, tokens and generated application records are ignored by Git.
-
----
-
-## Evaluation protocol 1.1
-
-The evaluation protocol separates direct extraction from generated recommendations.
-
-### Scored extraction fields
-
-Scalar fields:
-
-- company;
-- role;
-- location;
-- contract type;
-- start date.
-
-List fields:
-
-- missions summary;
-- required skills;
-- preferred skills;
-- tools and stack;
-- domain focus.
-
-`key_highlights_for_candidate` remains visible in reports but is excluded from extraction F1 because it is a generated recommendation field.
-
-The scorer normalizes documented acronym and expanded-form equivalents such as:
-
-- NLP / natural language processing;
-- RAG / retrieval-augmented generation;
-- LLM / large language model;
-- API / application programming interface;
-- CV / computer vision.
-
-Semantic modifiers remain distinct: `responsible AI` is not treated as equivalent to `agentic AI`.
-
----
-
-## Benchmark suites
-
-### 1. Stratified smoke suite
-
-The dedicated five-case suite is bilingual and covers five distinct role categories plus easy, medium and hard cases.
-
-```bash
-python scripts/evaluate_job_extraction.py \
-  --dataset evaluation/job_offers.smoke.v1.jsonl \
-  --benchmark-version smoke-1.0.0
-```
-
-It includes missing fields, a contract-inference trap and conflicting location context.
-
-### 2. Full extraction benchmark
-
-The full Benchmark V1 contains 50 synthetic English offers across 10 role families.
-
-```bash
-python scripts/evaluate_job_extraction.py \
-  --dataset evaluation/job_offers.v1.jsonl \
-  --benchmark-version 1.0.0
-```
-
-The report contains:
-
-- aggregate scalar accuracy and macro extraction-list F1;
-- accuracy or F1 by individual field;
-- slices by language, category and difficulty when available;
-- case-level predictions;
-- model name, dataset version, evaluation-protocol version, dataset hash, prompt hash and timestamp.
-
-### 3. Profile-memory retrieval
-
-```bash
-python scripts/evaluate_retrieval.py
-```
-
-Reported metrics:
-
-- Recall@1, Recall@3 and Recall@5;
-- MRR;
-- NDCG@1, NDCG@3 and NDCG@5.
-
-### 4. Static grounding-label classification
-
-```bash
-python scripts/evaluate_grounding.py \
-  --predictions evaluation/results/grounding_predictions.jsonl
-```
-
-This measures grounding-label classification against isolated claims and evidence references.
-
-### 5. Generated-email grounding review
-
-```bash
-python scripts/prepare_email_grounding_review.py --limit 10
-```
-
-Reviewers label factual candidate claims as `supported`, `unsupported` or `ambiguous`.
-
-```bash
-python scripts/summarize_email_grounding_review.py \
-  --annotations evaluation/results/email_grounding_review.jsonl
-```
-
-See [`evaluation/README.md`](evaluation/README.md) for the complete protocol.
-
-> Current datasets are synthetic and manually authored. Results support regression testing and comparative engineering experiments, not production-accuracy or job-market-generalization claims.
-
----
-
-## Secure GitHub Actions benchmark
-
-The `JobCopilot Benchmark` workflow is manual. It does not run on pushes, pull requests or schedules.
-
-- option `5`: runs the bilingual stratified smoke suite;
-- option `50`: runs the full Benchmark V1 dataset.
-
-The workflow reads `ANTHROPIC_API_KEY` from GitHub Actions Secrets, publishes aggregate metrics and uploads the complete JSON report as a 30-day artifact.
-
-See [`evaluation/GITHUB_ACTIONS.md`](evaluation/GITHUB_ACTIONS.md).
-
----
-
-## Repository structure
-
-```text
-app/
-  agent_graph.py
-  agent_tools.py
-  config.py
-  evaluation.py
-  graph.py
-  grounding_review.py
-  memory.py
-  prompts.py
-  schemas.py
-  services/
-  tools/
-  ui/
-
-data/
-  profile_memories.example.json
-
-evaluation/
-  GITHUB_ACTIONS.md
-  README.md
-  email_grounding_review.example.jsonl
-  grounding_cases.v1.jsonl
-  job_offers.smoke.v1.jsonl
-  job_offers.v1.jsonl
-  retrieval_cases.v1.jsonl
-
-scripts/
-  evaluate_grounding.py
-  evaluate_job_extraction.py
-  evaluate_retrieval.py
-  prepare_email_grounding_review.py
-  summarize_email_grounding_review.py
-  validate_benchmark.py
-
-tests/
-.github/workflows/
-  benchmark.yml
-  ci.yml
-Dockerfile
-SECURITY.md
-```
+Usage is stored separately for each user and resets on the next calendar day. A started provider action counts even when the downstream call fails, which prevents repeated failing retries from creating unbounded cost.
 
 ---
 
@@ -335,16 +158,16 @@ cd Job-Copilot
 python -m venv .venv
 ```
 
-Linux or macOS:
-
-```bash
-source .venv/bin/activate
-```
-
 Windows PowerShell:
 
 ```powershell
 .venv\Scripts\Activate.ps1
+```
+
+Linux or macOS:
+
+```bash
+source .venv/bin/activate
 ```
 
 Install dependencies:
@@ -353,36 +176,68 @@ Install dependencies:
 pip install -r requirements.txt
 ```
 
-For tests:
-
-```bash
-pip install -r requirements-dev.txt
-```
-
-Configure local variables:
+Create local configuration:
 
 ```bash
 cp .env.example .env
 ```
 
-At minimum:
+For a personalized signature while authentication is disabled:
 
 ```env
-ANTHROPIC_API_KEY=your_local_key
-ANTHROPIC_MODEL=your_supported_model
+LOCAL_CANDIDATE_NAME=Komla Alex LABOU
 ```
 
-Never commit the resulting `.env` file.
-
-Run the application:
+Run the premium private-beta interface:
 
 ```bash
-streamlit run app/ui/streamlit_app.py --server.address 127.0.0.1 --server.port 8501
+python -m streamlit run app/ui/private_beta_app.py
+```
+
+Open:
+
+```text
+http://localhost:8501
 ```
 
 ---
 
-## Google OAuth setup
+## Private beta accounts
+
+Enable authentication in `.env`:
+
+```env
+BETA_AUTH_ENABLED=true
+BETA_USERS_FILE=data/beta_users.json
+USER_DATA_ROOT=data/users
+```
+
+Create a user:
+
+```bash
+python scripts/manage_beta_user.py alex --display-name "Alex"
+```
+
+The command stores only a salted PBKDF2 password hash. The account display name is used automatically in generated email signatures.
+
+---
+
+## Profile onboarding
+
+Users can:
+
+- import up to five PDF, DOCX or TXT CV versions;
+- combine older role-specific CVs;
+- create a profile manually;
+- restore an advanced JobCopilot JSON backup.
+
+Raw uploaded CV files are not persisted. Extracted text is sent to the configured model only after explicit consent. No extracted fact becomes active until the user reviews and approves it.
+
+Image-only scanned PDFs are not processed with OCR in the current version.
+
+---
+
+## Google OAuth
 
 To enable Gmail and Calendar locally:
 
@@ -390,14 +245,70 @@ To enable Gmail and Calendar locally:
 2. enable Gmail API and Google Calendar API;
 3. configure the OAuth consent screen;
 4. create a Desktop OAuth client;
-5. save the downloaded file as `credentials.json`;
-6. run:
+5. save the downloaded file as `credentials.json` at the repository root;
+6. connect Google from the Settings page.
+
+OAuth credentials and generated tokens are ignored by Git. Each beta user receives a separate token file.
+
+---
+
+## Evaluation
+
+### Extraction
+
+The frozen V1 suite contains 50 synthetic English offers across 10 role families. A separate five-case smoke suite adds French and English preflight coverage.
 
 ```bash
-python -m app.bootstrap_gmail_auth
+python scripts/evaluate_job_extraction.py \
+  --dataset evaluation/job_offers.v1.jsonl \
+  --benchmark-version 1.0.0
 ```
 
-The OAuth file and generated tokens are ignored by Git.
+### Retrieval
+
+```bash
+python scripts/evaluate_retrieval.py
+```
+
+Reported metrics include Recall@1/3/5, MRR and NDCG@1/3/5.
+
+### Generated-email grounding
+
+```bash
+python scripts/prepare_email_grounding_review.py --limit 10
+```
+
+The workflow exports generated emails, selected memories, the claim ledger and privacy-safe provider telemetry for conservative claim-level review.
+
+Current benchmark datasets are synthetic regression suites. They are not evidence of production accuracy or broad job-market generalization.
+
+---
+
+## Validated engineering results
+
+The latest ten-family OpenAI end-to-end run completed:
+
+- 10/10 offers;
+- 30/30 successful OpenAI calls;
+- no fallback attempt;
+- 22/22 supported factual candidate claims;
+- zero zero-score claims;
+- zero ledger-coverage issues;
+- zero technology contamination.
+
+These results validate the frozen test workflow and grounding architecture. They do not measure recruiter response, user acceptance or real-world job-market performance.
+
+---
+
+## Tests and CI
+
+```bash
+python -m compileall -q app scripts tests
+python scripts/validate_benchmark.py
+pytest -q
+```
+
+GitHub Actions runs syntax validation, benchmark-integrity checks and the complete unit-test suite on pull requests and pushes to `main`.
 
 ---
 
@@ -411,75 +322,47 @@ docker build -t jobcopilot .
 docker run --rm -p 8501:8501 \
   --env-file .env \
   -v "$(pwd)/data:/app/data" \
-  -v "$(pwd)/tokens:/app/tokens" \
   -v "$(pwd)/credentials.json:/app/credentials.json:ro" \
   jobcopilot
 ```
 
-Do not bake credentials, OAuth tokens or personal profile files into the image.
+The Docker entrypoint launches `app/ui/private_beta_app.py`.
 
 ---
 
-## Tests and CI
+## Repository structure
 
-```bash
-python -m compileall -q app scripts tests
-python scripts/validate_benchmark.py
-pytest -q
+```text
+app/
+  agent_graph.py
+  agent_tools.py
+  email_composer.py
+  graph.py
+  memory.py
+  services/
+  tools/
+  ui/
+
+data/
+evaluation/
+scripts/
+tests/
+.github/workflows/
+.streamlit/
+Dockerfile
+PRIVATE_BETA.md
+SECURITY.md
 ```
-
-GitHub Actions validates syntax, benchmark integrity and unit tests for pull requests and pushes to `main`.
-
-The suite covers:
-
-- duplicate detection and atomic JSON persistence;
-- corrupted-store behavior;
-- agent confirmation gates;
-- Gmail and Calendar validation;
-- schema validation;
-- extraction, retrieval and grounding metrics;
-- acronym normalization and recommendation-field exclusion;
-- stratified smoke-suite integrity;
-- generated-email grounding-review validation.
 
 ---
 
 ## Current boundaries
 
-JobCopilot remains a **local engineering MVP**, not a production service.
+- Profile, tracker, usage and OAuth persistence are filesystem-backed.
+- Agent Chat history is process-local and disappears after restart.
+- Uploaded image-only PDFs are not OCR-processed.
+- Token counts depend on provider response metadata and may be unavailable.
+- French application quality still needs broader end-to-end testing.
+- Public deployment requires managed identity, durable storage, rate limiting and secure secret management.
 
-Known limitations:
-
-- JSON persistence is not transactional across concurrent processes;
-- the agent checkpointer is in memory;
-- there is no authentication or multi-user authorization;
-- no public hosted deployment is configured;
-- the full Benchmark V1 is synthetic and English-only;
-- generated-email grounding requires human claim segmentation and review;
-- retrieval has no learned reranker or calibrated relevance threshold;
-- Gmail and Calendar rely on local desktop OAuth;
-- observability does not yet provide full traces, cost accounting or redacted audit logs.
-
----
-
-## Roadmap
-
-1. rerun the corrected stratified smoke suite;
-2. run and publish controlled results on the frozen 50-offer benchmark;
-3. complete generated-email grounding review;
-4. add independent annotation and adjudication;
-5. add licensed or redistributable real-world offers;
-6. migrate persistence to SQLite;
-7. introduce structured tracing and redacted audit logs;
-8. add retrieval reranking and calibrated relevance thresholds;
-9. publish screenshots and a short synthetic-data demonstration.
-
----
-
-## Author
-
-**Komla Alex LABOU**  
-Applied AI and Machine Learning Engineer — Research-Oriented
-
-- GitHub: [EL-K-Code](https://github.com/EL-K-Code)
-- LinkedIn: [komla-alex-labou](https://www.linkedin.com/in/komla-alex-labou/)
+See [`PRIVATE_BETA.md`](PRIVATE_BETA.md) and [`SECURITY.md`](SECURITY.md) for operational and trust boundaries.
