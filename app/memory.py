@@ -2,9 +2,18 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
+
+# JobCopilot intentionally uses a public text-embedding model anonymously.
+# Set these before importing Hugging Face integrations so local and hosted runs
+# stay quiet without requiring an HF_TOKEN or displaying download progress.
+os.environ.setdefault("HF_HUB_DISABLE_TELEMETRY", "1")
+os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
+os.environ.setdefault("HF_HUB_VERBOSITY", "error")
+os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 
 from langchain_core.documents import Document
 from langchain_huggingface import HuggingFaceEmbeddings
@@ -12,6 +21,7 @@ from langchain_community.vectorstores import FAISS
 
 from app.config import settings
 from app.tenancy import get_user_paths
+
 
 logger = logging.getLogger(__name__)
 
@@ -78,9 +88,20 @@ def profile_memories_to_documents(memories: list[dict[str, Any]]) -> list[Docume
     return documents
 
 
+@lru_cache(maxsize=1)
 def get_embeddings_model() -> HuggingFaceEmbeddings:
-    """Return the embeddings model used for profile-memory retrieval."""
-    return HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+    """
+    Return one process-cached public embeddings model for profile retrieval.
+
+    The model repository is public, so authentication is explicitly disabled.
+    This prevents deployments from suggesting that HF_TOKEN is required while
+    still allowing the normal local Hugging Face cache to be used.
+    """
+    return HuggingFaceEmbeddings(
+        model_name="sentence-transformers/all-MiniLM-L6-v2",
+        model_kwargs={"token": False},
+        show_progress=False,
+    )
 
 
 def build_profile_vector_store(
