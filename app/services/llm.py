@@ -162,6 +162,8 @@ def generate_application_email_draft(
     job_analysis: JobAnalysis,
     match_insight: MatchInsight,
     retrieved_profile_memories: list[MemoryInput] | None = None,
+    *,
+    candidate_name: str | None = None,
 ) -> EmailDraft:
     memory_source: list[MemoryInput] = (
         retrieved_profile_memories
@@ -174,4 +176,5 @@ def generate_application_email_draft(
         job_analysis=job_analysis,
         selection=selection,
         memory_records=memory_records,
+        candidate_name=candidate_name,
     )
