@@ -210,6 +210,20 @@ def _safe_offer_label(value: str, fallback: str) -> str:
     return normalized
 
 
+def _safe_candidate_name(value: str | None) -> str:
+    """Normalize a trusted account display name without allowing header-like newlines."""
+    normalized = " ".join(str(value or "").strip().split())
+    if normalized.casefold() in {
+        "",
+        "unknown",
+        "candidate name",
+        "[candidate name]",
+        "local demo",
+    }:
+        return ""
+    return normalized[:120]
+
+
 def _ordered_unique(values: Iterable[str]) -> list[str]:
     output: list[str] = []
     seen: set[str] = set()
@@ -270,6 +284,8 @@ def compose_grounded_email_draft(
     job_analysis: JobAnalysis,
     selection: EmailEvidenceSelection,
     memory_records: list[dict],
+    *,
+    candidate_name: str | None = None,
 ) -> EmailDraft:
     """Build a personalized body from ranked evidence and safe fixed templates."""
     ranked_records = rank_memory_records_for_job(job_analysis, memory_records)
@@ -297,14 +313,15 @@ def compose_grounded_email_draft(
     )[:2]
     opening = _opening_for_variant(variant, role, company)
     closing = _closing_for_variant(variant, focus_items)
+    safe_name = _safe_candidate_name(candidate_name)
+    signature = "Kind regards," + (f"\n{safe_name}" if safe_name else "")
 
     body = (
         "Dear Hiring Team,\n\n"
         f"{opening}\n\n"
         f"{evidence_paragraph}\n\n"
         f"{closing}\n\n"
-        "Kind regards,\n"
-        "[Candidate Name]"
+        f"{signature}"
     )
 
     draft = EmailDraft(
