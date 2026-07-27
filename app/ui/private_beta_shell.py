@@ -3,7 +3,8 @@ from __future__ import annotations
 import streamlit as st
 
 from app.config import settings
-from app.tenancy import ensure_user_directories
+from app.services.usage_quota import get_daily_usage
+from app.tenancy import DEFAULT_LOCAL_USER_ID, ensure_user_directories
 from app.tools.gmail_tools import google_token_exists
 from app.ui import premium_private_beta as premium
 from app.ui.application_workspace import render_application_workspace
@@ -19,6 +20,19 @@ NAV_ITEMS = [
     "Applications",
     "Settings",
 ]
+
+
+def _effective_user(user: dict[str, str]) -> dict[str, str]:
+    """Use the configured local name while preserving authenticated beta identities."""
+    if (
+        user.get("user_id") == DEFAULT_LOCAL_USER_ID
+        and settings.local_candidate_name
+    ):
+        return {
+            "user_id": DEFAULT_LOCAL_USER_ID,
+            "display_name": settings.local_candidate_name,
+        }
+    return user
 
 
 def _render_sidebar(user: dict[str, str]) -> str:
@@ -42,6 +56,14 @@ def _render_sidebar(user: dict[str, str]) -> str:
         st.divider()
         st.write(f"**{user['display_name']}**")
         st.caption(f"Workspace: {user['user_id']}")
+
+        usage = get_daily_usage(user["user_id"])
+        st.progress(
+            min(usage.used / usage.limit, 1.0),
+            text=f"AI usage today · {usage.used}/{usage.limit}",
+        )
+        st.caption(f"{usage.remaining} AI operation(s) remaining today")
+
         if google_token_exists(user["user_id"]):
             st.success("Google connected")
         else:
@@ -67,6 +89,7 @@ def main() -> None:
     user = premium._authenticated_user()
     if user is None:
         st.stop()
+    user = _effective_user(user)
 
     user_id = user["user_id"]
     ensure_user_directories(user_id)
@@ -81,7 +104,7 @@ def main() -> None:
     elif page == "Profile":
         render_profile_page(user_id)
     elif page == "New application":
-        render_application_workspace(user_id)
+        render_application_workspace(user)
     elif page == "Agent Chat":
         premium._render_agent_chat(user_id)
     elif page == "Applications":
