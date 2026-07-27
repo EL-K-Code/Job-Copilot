@@ -58,10 +58,8 @@ def _render_sidebar(user: dict[str, str]) -> str:
         st.caption(f"Workspace: {user['user_id']}")
 
         usage = get_daily_usage(user["user_id"])
-        st.progress(
-            min(usage.used / usage.limit, 1.0),
-            text=f"AI usage today · {usage.used}/{usage.limit}",
-        )
+        st.caption(f"AI usage today · {usage.used}/{usage.limit}")
+        st.progress(min(usage.used / usage.limit, 1.0))
         st.caption(f"{usage.remaining} AI operation(s) remaining today")
 
         if google_token_exists(user["user_id"]):
