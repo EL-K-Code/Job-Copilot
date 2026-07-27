@@ -1,6 +1,6 @@
 # JobCopilot Private Beta
 
-The private beta entrypoint adds a user-scoped filesystem workspace, password-gated Streamlit UI and tenant-safe Agent Chat without changing the legacy local MVP.
+The private beta entrypoint provides a user-scoped filesystem workspace, password-gated Streamlit UI, tenant-safe Agent Chat, human-verified profile onboarding and daily AI-operation quotas.
 
 ## What is isolated
 
@@ -11,6 +11,7 @@ data/users/<user_id>/
   profile_memories.json
   applications.json
   google_token.json
+  usage.json
   faiss_index/
   uploads/
 ```
@@ -46,6 +47,7 @@ In `.env`:
 BETA_AUTH_ENABLED=true
 BETA_USERS_FILE=data/beta_users.json
 USER_DATA_ROOT=data/users
+BETA_DAILY_AI_LIMIT=10
 ```
 
 Create the first account locally:
@@ -54,15 +56,35 @@ Create the first account locally:
 python scripts/manage_beta_user.py alice --display-name "Alice"
 ```
 
-The command prompts for the password without echoing it and stores only a salted PBKDF2 hash.
+The command prompts for the password without echoing it and stores only a salted PBKDF2 hash. The configured `display_name` is used automatically in application-email signatures.
+
+When authentication is disabled, an optional local name can be configured:
+
+```env
+LOCAL_CANDIDATE_NAME=Komla Alex LABOU
+```
+
+Without a trusted name, JobCopilot leaves the signature name blank instead of showing a placeholder.
 
 ## Run the private beta frontend
 
 ```bash
-streamlit run app/ui/private_beta_app.py \
-  --server.address 127.0.0.1 \
-  --server.port 8501
+python -m streamlit run app/ui/private_beta_app.py
 ```
+
+The same entrypoint is used by the Dockerfile and is the only supported Streamlit product interface.
+
+## Daily AI quotas
+
+A paid AI action consumes one quota unit:
+
+- one CV extraction;
+- one application analysis;
+- one authenticated Agent Chat turn.
+
+Usage is stored per tenant in `usage.json`, displayed in the sidebar and reset when the calendar day changes. A started provider operation counts even if the provider later fails. This prevents repeated failing retries from creating unbounded cost.
+
+The quota does not apply to local deterministic evaluation workflows that do not run through the private-beta interface.
 
 ## Profile onboarding
 
@@ -115,11 +137,11 @@ The private beta UI also exposes a local interactive connection button.
 The Settings page supports:
 
 - export of profile memories and application records;
-- deletion of the complete private workspace, including Google tokens and FAISS indexes;
+- deletion of the complete private workspace, including Google tokens, usage ledger and FAISS indexes;
 - explicit display of whether Google is connected for the current user.
 
 Provider telemetry stores provider, model, operation, status, latency and available token counts. It deliberately excludes prompts, CV text, generated content, API keys and raw provider errors.
 
 ## Current boundary
 
-This is a private engineering beta, not a production identity platform. Deployment behind the public internet still requires HTTPS, secure secret management, rate limiting, persistent database-backed sessions, encrypted durable chat storage and a production authentication provider.
+This is a private engineering beta, not a production identity platform. Deployment behind the public internet still requires HTTPS, secure secret management, persistent database-backed sessions, encrypted durable chat storage, rate limiting beyond the current cost quota and a production authentication provider.

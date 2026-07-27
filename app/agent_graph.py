@@ -10,7 +10,9 @@ from langgraph.prebuilt import ToolNode, tools_condition
 
 from app.agent_state import JobCopilotAgentState
 from app.agent_tools import AGENT_TOOLS, build_agent_tools
+from app.config import settings
 from app.services.model_provider import get_tool_calling_chat_model
+from app.services.usage_quota import consume_ai_operation
 from app.tenancy import normalize_user_id
 
 
@@ -32,7 +34,7 @@ Rules:
 - Never create a Gmail draft or Calendar event without explicit confirmation in the current conversation turn.
 - First show the exact recipient, subject and email body, or the exact company, role and reminder date.
 - Ask the user to confirm the proposed external action.
-- Call an external-action tool with confirmed=true only after the user clearly confirms it.
+- Call an external-action tool with confirmed=true only after the user clearly confirms the proposed values.
 - If confirmation is absent or ambiguous, keep confirmed=false and do not retry the action automatically.
 - Every tool is already bound to the authenticated user's private workspace. Never ask for, infer, expose or change a user ID.
 - Be concise, professional, and operational.
@@ -79,7 +81,18 @@ def build_jobcopilot_agent_graph(user_id: str | None = None):
     builder = StateGraph(JobCopilotAgentState)
     builder.add_node("agent", scoped_agent_node)
     builder.add_node("tools", ToolNode(tools))
-    builder.add_edge(START, "agent")
+
+    if normalized_user_id is not None and settings.beta_auth_enabled:
+        def quota_node(_state: JobCopilotAgentState) -> JobCopilotAgentState:
+            consume_ai_operation(normalized_user_id, "agent_chat")
+            return {}
+
+        builder.add_node("quota", quota_node)
+        builder.add_edge(START, "quota")
+        builder.add_edge("quota", "agent")
+    else:
+        builder.add_edge(START, "agent")
+
     builder.add_conditional_edges(
         "agent",
         tools_condition,
@@ -104,5 +117,5 @@ def clear_jobcopilot_agent_graph_cache() -> None:
     get_jobcopilot_agent_graph.cache_clear()
 
 
-# Backward-compatible graph used by the original single-user Streamlit application.
+# Backward-compatible graph used by non-tenant command-line callers.
 jobcopilot_agent_graph = build_jobcopilot_agent_graph()

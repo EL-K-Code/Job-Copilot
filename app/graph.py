@@ -108,6 +108,7 @@ def generate_email_node(state: JobCopilotState) -> JobCopilotState:
         job_analysis=job_analysis,
         match_insight=match_insight,
         retrieved_profile_memories=retrieved_memory_records,
+        candidate_name=state.get("candidate_name"),
     )
 
     return {"email_draft": email_draft.model_dump()}
