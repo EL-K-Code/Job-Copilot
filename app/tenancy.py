@@ -21,6 +21,7 @@ class UserPaths:
     memory_index: Path
     applications: Path
     google_token: Path
+    usage: Path
     uploads: Path
 
 
@@ -50,6 +51,7 @@ def get_user_paths(user_id: str | None) -> UserPaths:
         memory_index=root / "faiss_index",
         applications=root / "applications.json",
         google_token=root / "google_token.json",
+        usage=root / "usage.json",
         uploads=root / "uploads",
     )
 
