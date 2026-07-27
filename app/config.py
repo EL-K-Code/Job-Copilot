@@ -17,6 +17,20 @@ def _env_flag(name: str, default: bool = False) -> bool:
     return raw_value.strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _env_int(name: str, default: int, *, minimum: int = 0) -> int:
+    """Read a bounded integer environment variable with a clear startup error."""
+    raw_value = os.getenv(name)
+    if raw_value is None or not raw_value.strip():
+        return default
+    try:
+        value = int(raw_value)
+    except ValueError as exc:
+        raise ValueError(f"{name} must be an integer.") from exc
+    if value < minimum:
+        raise ValueError(f"{name} must be at least {minimum}.")
+    return value
+
+
 @dataclass(frozen=True)
 class Settings:
     llm_provider: str = os.getenv("LLM_PROVIDER", "openai")
@@ -43,6 +57,8 @@ class Settings:
     user_data_root: str = os.getenv("USER_DATA_ROOT", "data/users")
     beta_users_file: str = os.getenv("BETA_USERS_FILE", "data/beta_users.json")
     beta_auth_enabled: bool = _env_flag("BETA_AUTH_ENABLED", default=False)
+    beta_daily_ai_limit: int = _env_int("BETA_DAILY_AI_LIMIT", 10, minimum=1)
+    local_candidate_name: str = os.getenv("LOCAL_CANDIDATE_NAME", "").strip()
 
     default_timezone: str = os.getenv("DEFAULT_TIMEZONE", "Europe/Paris")
     allow_trusted_faiss_deserialization: bool = _env_flag(
