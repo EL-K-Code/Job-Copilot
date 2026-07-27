@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 from datetime import date, timedelta
 from html import escape
+from uuid import uuid4
 
 import streamlit as st
 
@@ -11,10 +12,14 @@ from app.services.applications_store import (
     create_application_record,
     find_existing_application,
 )
-from app.services.llm_telemetry import summarize_llm_events
+from app.services.llm_telemetry import (
+    capture_llm_telemetry,
+    serialize_llm_events,
+    summarize_llm_events,
+)
+from app.services.usage_quota import UsageQuotaExceeded
 from app.tools.calendar_tools import build_followup_event_payload, create_followup_event
 from app.tools.gmail_tools import create_gmail_draft, google_token_exists
-from app.ui import premium_private_beta as premium
 
 
 JOB_PLACEHOLDER = "Paste the complete job description here."
@@ -56,6 +61,38 @@ def telemetry_badges(events: list[dict], claim_count: int) -> dict[str, str | bo
     }
 
 
+def _run_pipeline(
+    user_id: str,
+    candidate_name: str,
+    job_text: str,
+) -> dict:
+    from app.graph import jobcopilot_graph
+
+    with capture_llm_telemetry() as events:
+        result = jobcopilot_graph.invoke(
+            {
+                "user_id": user_id,
+                "candidate_name": candidate_name,
+                "job_text": job_text,
+            },
+            config={
+                "configurable": {
+                    "thread_id": f"private-beta-{user_id}-{uuid4()}"
+                }
+            },
+        )
+    serialized = serialize_llm_events(events)
+    return {
+        "job_analysis": result["job_analysis"],
+        "retrieved_memories": result["retrieved_memories"],
+        "retrieved_memory_records": result.get("retrieved_memory_records", []),
+        "match": result["match_insight"],
+        "email_draft": result["email_draft"],
+        "llm_telemetry": serialized,
+        "llm_telemetry_summary": summarize_llm_events(serialized),
+    }
+
+
 def _render_compact_ai_status(events: list[dict], claim_count: int) -> None:
     badges = telemetry_badges(events, claim_count)
     fallback = (
@@ -87,7 +124,10 @@ def _render_technical_trace(events: list[dict]) -> None:
     with st.expander("AI transparency & technical details"):
         st.write(f"**Provider used:** {provider}")
         st.write(f"**Model:** {model}")
-        st.write(f"**Execution:** {successful} successful call(s), {failed} failed attempt(s), {duration:.2f}s")
+        st.write(
+            f"**Execution:** {successful} successful call(s), "
+            f"{failed} failed attempt(s), {duration:.2f}s"
+        )
         st.caption(
             "This trace stores provider metadata only. Job text, prompts, generated content and API keys are not recorded here."
         )
@@ -183,16 +223,24 @@ def _render_match_and_evidence(match: dict, draft: dict, memory_records: list[di
                 st.caption("Aligned with: " + ", ".join(str(item) for item in aligned))
             with st.expander("Audit metadata"):
                 st.write("Memory IDs: " + ", ".join(claim.get("supporting_memory_ids", [])))
-                st.write(f"Relevance score: {float(claim.get('relevance_score', 0) or 0):.2f}")
+                st.write(
+                    f"Relevance score: {float(claim.get('relevance_score', 0) or 0):.2f}"
+                )
 
 
 def _render_email_actions(user_id: str, analysis: dict, draft: dict) -> None:
     _sync_email_editor(draft, analysis)
-    st.markdown('<div class="jc-step">Step 2 · Review the message</div>', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="jc-step">Step 2 · Review the message</div>',
+        unsafe_allow_html=True,
+    )
     subject = st.text_input("Subject", key="beta_email_subject")
     body = st.text_area("Email body", height=360, key="beta_email_body")
 
-    st.markdown('<div class="jc-step">Step 3 · Choose the next action</div>', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="jc-step">Step 3 · Choose the next action</div>',
+        unsafe_allow_html=True,
+    )
     connected = google_token_exists(user_id)
     recipient = st.text_input(
         "Recruiter email",
@@ -211,7 +259,10 @@ def _render_email_actions(user_id: str, analysis: dict, draft: dict) -> None:
     )
 
     if not connected:
-        st.info("Connect Google in Settings to create Gmail drafts and Calendar reminders. Saving to the tracker remains available.")
+        st.info(
+            "Connect Google in Settings to create Gmail drafts and Calendar reminders. "
+            "Saving to the tracker remains available."
+        )
 
     save_col, gmail_col, calendar_col = st.columns(3)
     with save_col:
@@ -274,17 +325,25 @@ def _render_email_actions(user_id: str, analysis: dict, draft: dict) -> None:
                 st.error(f"The Calendar reminder could not be created ({type(exc).__name__}).")
 
 
-def render_application_workspace(user_id: str) -> None:
+def render_application_workspace(user: dict[str, str]) -> None:
     """Render the polished offer-to-application workflow."""
+    user_id = user["user_id"]
+    candidate_name = str(user.get("display_name", "")).strip()
+
     st.markdown("## New application")
-    st.caption("Turn a complete job description into a reviewed, evidence-grounded application draft.")
+    st.caption(
+        "Turn a complete job description into a reviewed, evidence-grounded application draft."
+    )
 
     current = normalize_initial_job_text(st.session_state.get("job_text"))
     if st.session_state.get("job_text") != current:
         st.session_state["job_text"] = current
 
     with st.container(border=True):
-        st.markdown('<div class="jc-step">Step 1 · Opportunity</div>', unsafe_allow_html=True)
+        st.markdown(
+            '<div class="jc-step">Step 1 · Opportunity</div>',
+            unsafe_allow_html=True,
+        )
         job_text = st.text_area(
             "Job description",
             height=280,
@@ -292,7 +351,9 @@ def render_application_workspace(user_id: str) -> None:
             placeholder=JOB_PLACEHOLDER,
             label_visibility="collapsed",
         )
-        st.caption(f"{len(job_text.strip()):,} characters · the full offer gives more reliable extraction and matching")
+        st.caption(
+            f"{len(job_text.strip()):,} characters · the full offer gives more reliable extraction and matching"
+        )
         analyze = st.button(
             "Analyze offer and prepare draft",
             type="primary",
@@ -308,7 +369,7 @@ def render_application_workspace(user_id: str) -> None:
         ) as status:
             try:
                 st.write("Extracting role requirements")
-                results = premium._run_pipeline(user_id, job_text)
+                results = _run_pipeline(user_id, candidate_name, job_text)
                 st.session_state["results"] = results
                 st.write("Ranking verified profile evidence")
                 st.write("Composing the grounded email")
@@ -317,13 +378,20 @@ def render_application_workspace(user_id: str) -> None:
                     state="complete",
                     expanded=False,
                 )
+            except UsageQuotaExceeded as exc:
+                status.update(
+                    label="Daily AI quota reached",
+                    state="error",
+                )
+                st.warning(str(exc))
             except Exception as exc:
                 status.update(
                     label="The analysis could not be completed",
                     state="error",
                 )
                 st.error(
-                    f"JobCopilot could not complete this analysis ({type(exc).__name__}). Check the offer, provider configuration and profile, then try again."
+                    f"JobCopilot could not complete this analysis ({type(exc).__name__}). "
+                    "Check the offer, provider configuration and profile, then try again."
                 )
 
     results = st.session_state.get("results")
