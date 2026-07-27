@@ -6,6 +6,9 @@ showErrorLinks = false
 [server]
 maxUploadSize = 10
 maxMessageSize = 60
+# Polling preserves local auto-reload without introspecting every lazily loaded
+# transformers module, which otherwise produces optional torchvision tracebacks.
+fileWatcherType = "poll"
 
 [browser]
 gatherUsageStats = false
