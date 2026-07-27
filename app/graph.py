@@ -11,6 +11,7 @@ from app.services.llm import (
     generate_match_insight,
     generate_application_email_draft,
 )
+from app.services.usage_quota import consume_ai_operation
 from app.state import JobCopilotState
 
 
@@ -54,6 +55,10 @@ def memory_documents_to_records(documents: Iterable[Any]) -> list[dict[str, Any]
 
 
 def analyze_job_node(state: JobCopilotState) -> JobCopilotState:
+    user_id = state.get("user_id")
+    if user_id:
+        consume_ai_operation(user_id, "application_analysis")
+
     job_text = state["job_text"]
     job_analysis = analyze_job_offer(job_text)
 
