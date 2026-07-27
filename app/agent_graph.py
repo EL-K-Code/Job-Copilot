@@ -10,6 +10,7 @@ from langgraph.prebuilt import ToolNode, tools_condition
 
 from app.agent_state import JobCopilotAgentState
 from app.agent_tools import AGENT_TOOLS, build_agent_tools
+from app.config import settings
 from app.services.model_provider import get_tool_calling_chat_model
 from app.services.usage_quota import consume_ai_operation
 from app.tenancy import normalize_user_id
@@ -81,7 +82,7 @@ def build_jobcopilot_agent_graph(user_id: str | None = None):
     builder.add_node("agent", scoped_agent_node)
     builder.add_node("tools", ToolNode(tools))
 
-    if normalized_user_id is not None:
+    if normalized_user_id is not None and settings.beta_auth_enabled:
         def quota_node(_state: JobCopilotAgentState) -> JobCopilotAgentState:
             consume_ai_operation(normalized_user_id, "agent_chat")
             return {}
