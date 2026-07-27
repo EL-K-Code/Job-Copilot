@@ -5,6 +5,7 @@ from typing import TypedDict
 
 class JobCopilotState(TypedDict, total=False):
     user_id: str
+    candidate_name: str
     job_text: str
     retrieval_query: str
     job_analysis: dict
