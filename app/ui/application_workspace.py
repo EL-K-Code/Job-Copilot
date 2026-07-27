@@ -20,6 +20,7 @@ from app.services.llm_telemetry import (
 from app.services.usage_quota import UsageQuotaExceeded, consume_ai_operation
 from app.tools.calendar_tools import build_followup_event_payload, create_followup_event
 from app.tools.gmail_tools import create_gmail_draft, google_token_exists
+from app.ui.application_pack_panel import render_application_pack
 
 
 JOB_PLACEHOLDER = "Paste the complete job description here."
@@ -89,6 +90,7 @@ def _run_pipeline(
         "retrieved_memory_records": result.get("retrieved_memory_records", []),
         "match": result["match_insight"],
         "email_draft": result["email_draft"],
+        "application_pack": result["application_pack"],
         "llm_telemetry": serialized,
         "llm_telemetry_summary": summarize_llm_events(serialized),
     }
@@ -106,8 +108,9 @@ def _render_compact_ai_status(events: list[dict], claim_count: int) -> None:
             '<div class="jc-trust-row">'
             f'<span class="jc-pill jc-pill-success">Generated with {escape(str(badges["provider"]))}</span>'
             f'<span class="jc-pill">{escape(str(badges["grounding_label"]))}</span>'
-            f'{fallback}'
-            '</div>'
+            '<span class="jc-pill">Channel-aware pack</span>'
+            f"{fallback}"
+            "</div>"
         ),
         unsafe_allow_html=True,
     )
@@ -124,13 +127,15 @@ def _render_technical_trace(events: list[dict]) -> None:
     failed = int(summary.get("failed_attempts", 0) or 0)
     with st.expander("AI transparency & technical details"):
         st.write(f"**Provider used:** {provider}")
-        st.write(f"**Model:** {model}")
+        st.write(f"**Final model:** {model}")
         st.write(
             f"**Execution:** {successful} successful call(s), "
             f"{failed} failed attempt(s), {duration:.2f}s"
         )
         st.caption(
-            "This trace stores provider metadata only. Job text, prompts, generated content and API keys are not recorded here."
+            "The application pack itself is composed deterministically from the selected "
+            "evidence ledger and adds no extra LLM call. This trace stores provider metadata "
+            "only; job text, prompts, generated content and API keys are not recorded here."
         )
         st.dataframe(events, use_container_width=True, hide_index=True)
 
@@ -154,7 +159,40 @@ def _sync_email_editor(draft: dict, analysis: dict) -> None:
     st.session_state["beta_message_reviewed"] = False
 
 
+def _render_pills(values: list[str]) -> None:
+    pills = " ".join(
+        f'<span class="jc-pill">{escape(str(item))}</span>' for item in values
+    )
+    st.markdown(pills or "—", unsafe_allow_html=True)
+
+
 def _render_role_overview(analysis: dict) -> None:
+    route_col, material_col = st.columns(2)
+    with route_col:
+        st.markdown("#### Application route")
+        channel = str(analysis.get("application_channel", "unknown"))
+        channel_labels = {
+            "ats_portal": "Portal / ATS",
+            "email": "Email",
+            "linkedin": "LinkedIn",
+            "academic": "Academic / research",
+            "unknown": "Not explicitly stated",
+        }
+        st.info(channel_labels.get(channel, "Not explicitly stated"))
+        instructions = analysis.get("application_instructions", [])
+        if instructions:
+            for item in instructions:
+                st.write(f"• {item}")
+        else:
+            st.caption("No explicit application instruction was found in the offer.")
+    with material_col:
+        st.markdown("#### Requested materials")
+        materials = analysis.get("requested_materials", [])
+        if materials:
+            _render_pills(materials)
+        else:
+            st.caption("No specific material was explicitly requested.")
+
     left, right = st.columns(2)
     with left:
         st.markdown("#### Main responsibilities")
@@ -165,27 +203,19 @@ def _render_role_overview(analysis: dict) -> None:
         else:
             st.caption("No explicit responsibilities were extracted.")
         st.markdown("#### Required skills")
-        pills = " ".join(
-            f'<span class="jc-pill">{escape(str(item))}</span>'
-            for item in analysis.get("required_skills", [])
-        )
-        st.markdown(pills or "—", unsafe_allow_html=True)
+        _render_pills(analysis.get("required_skills", []))
     with right:
         st.markdown("#### Tools and stack")
-        pills = " ".join(
-            f'<span class="jc-pill">{escape(str(item))}</span>'
-            for item in analysis.get("tools_and_stack", [])
-        )
-        st.markdown(pills or "—", unsafe_allow_html=True)
+        _render_pills(analysis.get("tools_and_stack", []))
         st.markdown("#### Domain focus")
-        pills = " ".join(
-            f'<span class="jc-pill">{escape(str(item))}</span>'
-            for item in analysis.get("domain_focus", [])
-        )
-        st.markdown(pills or "—", unsafe_allow_html=True)
+        _render_pills(analysis.get("domain_focus", []))
 
 
-def _render_match_and_evidence(match: dict, draft: dict, memory_records: list[dict]) -> None:
+def _render_match_and_evidence(
+    match: dict,
+    draft: dict,
+    memory_records: list[dict],
+) -> None:
     strengths, gaps = st.columns(2)
     with strengths:
         st.markdown("#### Strong alignment")
@@ -205,9 +235,9 @@ def _render_match_and_evidence(match: dict, draft: dict, memory_records: list[di
             st.caption("No material gap was identified from the supplied offer.")
 
     claims = draft.get("claim_evidence", [])
-    st.markdown(f"#### Evidence used in the email · {len(claims)}")
+    st.markdown(f"#### Evidence reused across the application pack · {len(claims)}")
     if not claims:
-        st.info("The email contains no factual candidate claim requiring evidence.")
+        st.info("No factual candidate claim requiring evidence was produced.")
         return
 
     for index, claim in enumerate(claims, start=1):
@@ -231,15 +261,23 @@ def _render_match_and_evidence(match: dict, draft: dict, memory_records: list[di
 
 def _render_email_actions(user_id: str, analysis: dict, draft: dict) -> None:
     _sync_email_editor(draft, analysis)
+    channel = str(analysis.get("application_channel", "unknown"))
+    if channel != "email":
+        st.info(
+            "The detected application route does not explicitly require email. This draft is "
+            "kept as an optional outreach or fallback format; do not send it unless the channel "
+            "is appropriate."
+        )
+
     st.markdown(
-        '<div class="jc-step">Step 2 · Review the message</div>',
+        '<div class="jc-step">Optional · Review the email</div>',
         unsafe_allow_html=True,
     )
     subject = st.text_input("Subject", key="beta_email_subject")
     body = st.text_area("Email body", height=360, key="beta_email_body")
 
     st.markdown(
-        '<div class="jc-step">Step 3 · Choose the next action</div>',
+        '<div class="jc-step">Choose the next action</div>',
         unsafe_allow_html=True,
     )
     connected = google_token_exists(user_id)
@@ -276,6 +314,7 @@ def _render_email_actions(user_id: str, analysis: dict, draft: dict) -> None:
             if existing:
                 st.warning("This application already exists in your tracker.")
             else:
+                route = str(analysis.get("application_channel", "unknown"))
                 record = create_application_record(
                     company=str(analysis.get("company", "")),
                     role=str(analysis.get("role", "")),
@@ -283,6 +322,7 @@ def _render_email_actions(user_id: str, analysis: dict, draft: dict) -> None:
                     email_body=body,
                     source="private-beta",
                     reminder_date=str(followup_date),
+                    notes=f"Recommended application route: {route}.",
                 )
                 add_application_record(record, user_id=user_id)
                 st.success("Saved to your private tracker.")
@@ -291,7 +331,7 @@ def _render_email_actions(user_id: str, analysis: dict, draft: dict) -> None:
     with gmail_col:
         if st.button(
             "Create Gmail draft",
-            type="primary",
+            type="primary" if channel == "email" else "secondary",
             use_container_width=True,
             disabled=not can_use_google,
             key="premium_create_gmail_draft",
@@ -327,13 +367,13 @@ def _render_email_actions(user_id: str, analysis: dict, draft: dict) -> None:
 
 
 def render_application_workspace(user: dict[str, str]) -> None:
-    """Render the polished offer-to-application workflow."""
+    """Render the channel-aware offer-to-application workflow."""
     user_id = user["user_id"]
     candidate_name = str(user.get("display_name", "")).strip()
 
     st.markdown("## New application")
     st.caption(
-        "Turn a complete job description into a reviewed, evidence-grounded application draft."
+        "Turn a complete job description into a channel-aware, evidence-grounded application pack."
     )
 
     current = normalize_initial_job_text(st.session_state.get("job_text"))
@@ -353,10 +393,10 @@ def render_application_workspace(user: dict[str, str]) -> None:
             label_visibility="collapsed",
         )
         st.caption(
-            f"{len(job_text.strip()):,} characters · the full offer gives more reliable extraction and matching"
+            f"{len(job_text.strip()):,} characters · include application instructions when they are available"
         )
         analyze = st.button(
-            "Analyze offer and prepare draft",
+            "Analyze offer and build application pack",
             type="primary",
             use_container_width=True,
             disabled=len(job_text.strip()) < 40,
@@ -369,13 +409,13 @@ def render_application_workspace(user: dict[str, str]) -> None:
             expanded=True,
         ) as status:
             try:
-                st.write("Extracting role requirements")
+                st.write("Extracting role and application instructions")
                 results = _run_pipeline(user_id, candidate_name, job_text)
                 st.session_state["results"] = results
                 st.write("Ranking verified profile evidence")
-                st.write("Composing the grounded email")
+                st.write("Building the channel-aware application pack")
                 status.update(
-                    label="Application workspace ready",
+                    label="Application pack ready",
                     state="complete",
                     expanded=False,
                 )
@@ -400,8 +440,8 @@ def render_application_workspace(user: dict[str, str]) -> None:
         st.markdown(
             """
             <div class="jc-card" style="margin-top:1rem;text-align:center;padding:2rem">
-              <div class="jc-card-title">Your application workspace will appear here</div>
-              <p class="jc-muted">You will review the role, matching evidence, email and next actions before anything leaves JobCopilot.</p>
+              <div class="jc-card-title">Your application pack will appear here</div>
+              <p class="jc-muted">JobCopilot will recommend a route, show CV priorities and prepare only the outputs that make sense for the offer.</p>
             </div>
             """,
             unsafe_allow_html=True,
@@ -411,6 +451,7 @@ def render_application_workspace(user: dict[str, str]) -> None:
     analysis = results["job_analysis"]
     match = results["match"]
     draft = results["email_draft"]
+    pack = results["application_pack"]
     events = results.get("llm_telemetry", [])
     claims = draft.get("claim_evidence", [])
     memory_records = results.get("retrieved_memory_records", [])
@@ -427,13 +468,20 @@ def render_application_workspace(user: dict[str, str]) -> None:
     )
     _render_compact_ai_status(events, len(claims))
 
-    overview_tab, match_tab, email_tab = st.tabs(
-        ["Role overview", "Match & evidence", "Email & actions"]
+    overview_tab, match_tab, pack_tab, email_tab = st.tabs(
+        [
+            "Role & route",
+            "Match & evidence",
+            "Application pack",
+            "Optional email & actions",
+        ]
     )
     with overview_tab:
         _render_role_overview(analysis)
     with match_tab:
         _render_match_and_evidence(match, draft, memory_records)
+    with pack_tab:
+        render_application_pack(pack, memory_records)
     with email_tab:
         _render_email_actions(user_id, analysis, draft)
 
