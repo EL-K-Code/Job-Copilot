@@ -1,6 +1,8 @@
 streamlit
 python-dotenv
 pydantic
+pypdf
+python-docx
 
 langchain
 langgraph
