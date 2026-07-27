@@ -1,0 +1,19 @@
+[client]
+toolbarMode = "minimal"
+showErrorDetails = "none"
+showErrorLinks = false
+
+[server]
+maxUploadSize = 10
+maxMessageSize = 20
+
+[browser]
+gatherUsageStats = false
+
+[theme]
+base = "light"
+primaryColor = "#315EFB"
+backgroundColor = "#F4F7FB"
+secondaryBackgroundColor = "#FFFFFF"
+textColor = "#0B1633"
+font = "sans serif"
