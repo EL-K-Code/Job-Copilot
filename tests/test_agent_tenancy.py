@@ -26,9 +26,17 @@ def test_pipeline_tool_forwards_bound_user_to_retrieval_graph(monkeypatch):
             captured["state"] = state
             captured["config"] = config
             return {
-                "job_analysis": {"company": "Example", "role": "ML Engineer"},
+                "job_analysis": {
+                    "company": "Example",
+                    "role": "ML Engineer",
+                    "application_channel": "ats_portal",
+                },
                 "retrieved_memories": ["Alice works with Python."],
                 "match_insight": {"strengths": [], "gaps": [], "suggested_angles": []},
+                "application_pack": {
+                    "channel": "ats_portal",
+                    "route_label": "Portal or ATS application",
+                },
                 "email_draft": {"subject": "Application", "body": "Hello"},
             }
 
@@ -41,6 +49,7 @@ def test_pipeline_tool_forwards_bound_user_to_retrieval_graph(monkeypatch):
     assert captured["state"]["job_text"] == "A complete job offer"
     assert "alice" in captured["config"]["configurable"]["thread_id"]
     assert result["job_analysis"]["company"] == "Example"
+    assert result["application_pack"]["channel"] == "ats_portal"
 
 
 def test_gmail_tool_uses_only_bound_users_google_token(monkeypatch):
