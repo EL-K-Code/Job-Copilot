@@ -5,6 +5,7 @@ from typing import Any
 
 from langgraph.graph import START, END, StateGraph
 
+from app.application_pack import compose_application_pack
 from app.memory import retrieve_profile_context
 from app.services.llm import (
     analyze_job_offer,
@@ -114,6 +115,18 @@ def generate_email_node(state: JobCopilotState) -> JobCopilotState:
     return {"email_draft": email_draft.model_dump()}
 
 
+def generate_application_pack_node(state: JobCopilotState) -> JobCopilotState:
+    from app.schemas import EmailDraft, JobAnalysis, MatchInsight
+
+    application_pack = compose_application_pack(
+        job_analysis=JobAnalysis(**state["job_analysis"]),
+        match_insight=MatchInsight(**state["match_insight"]),
+        email_draft=EmailDraft(**state["email_draft"]),
+        candidate_name=state.get("candidate_name"),
+    )
+    return {"application_pack": application_pack.model_dump()}
+
+
 def build_jobcopilot_graph():
     builder = StateGraph(JobCopilotState)
 
@@ -121,12 +134,14 @@ def build_jobcopilot_graph():
     builder.add_node("retrieve_memory", retrieve_memory_node)
     builder.add_node("generate_match", generate_match_node)
     builder.add_node("generate_email", generate_email_node)
+    builder.add_node("generate_application_pack", generate_application_pack_node)
 
     builder.add_edge(START, "analyze_job")
     builder.add_edge("analyze_job", "retrieve_memory")
     builder.add_edge("retrieve_memory", "generate_match")
     builder.add_edge("generate_match", "generate_email")
-    builder.add_edge("generate_email", END)
+    builder.add_edge("generate_email", "generate_application_pack")
+    builder.add_edge("generate_application_pack", END)
 
     # The deterministic pipeline is stateless. Compiling it without a shared
     # checkpointer prevents cross-session state from being retained or mixed.
