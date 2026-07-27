@@ -3,11 +3,12 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import asdict, dataclass
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from threading import Lock
 from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from app.config import settings
 from app.tenancy import ensure_user_directories
@@ -31,6 +32,18 @@ class UsageSnapshot:
 
     def model_dump(self) -> dict[str, Any]:
         return asdict(self)
+
+
+def _effective_day(day: date | None) -> str:
+    if day is not None:
+        return day.isoformat()
+    try:
+        timezone = ZoneInfo(settings.default_timezone)
+    except ZoneInfoNotFoundError as exc:
+        raise ValueError(
+            f"DEFAULT_TIMEZONE is not a valid IANA timezone: {settings.default_timezone}"
+        ) from exc
+    return datetime.now(timezone).date().isoformat()
 
 
 def _empty_payload(day: str) -> dict[str, Any]:
@@ -97,7 +110,7 @@ def get_daily_usage(
     limit: int | None = None,
 ) -> UsageSnapshot:
     """Return today's usage without consuming quota."""
-    effective_day = (day or date.today()).isoformat()
+    effective_day = _effective_day(day)
     effective_limit = settings.beta_daily_ai_limit if limit is None else limit
     if effective_limit < 1:
         raise ValueError("Daily AI limit must be at least 1.")
@@ -133,7 +146,7 @@ def consume_ai_operation(
     if not normalized_operation:
         raise ValueError("Usage operation name cannot be empty.")
 
-    effective_day = (day or date.today()).isoformat()
+    effective_day = _effective_day(day)
     effective_limit = settings.beta_daily_ai_limit if limit is None else limit
     if effective_limit < 1:
         raise ValueError("Daily AI limit must be at least 1.")
