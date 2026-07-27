@@ -14,8 +14,10 @@ def _settings(**overrides):
         "llm_fallback_provider": "anthropic",
         "openai_api_key": "openai-secret",
         "openai_model": "gpt-test",
+        "openai_profile_model": "gpt-fast",
         "anthropic_api_key": "anthropic-secret",
         "anthropic_model": "claude-test",
+        "anthropic_profile_model": "claude-fast",
     }
     values.update(overrides)
     values["require_openai_api_key"] = lambda: (
@@ -87,18 +89,19 @@ def test_structured_factory_builds_models_in_configured_order(monkeypatch):
     calls = []
 
     class FakeModel:
-        def __init__(self, provider):
+        def __init__(self, provider, model_name):
             self.provider = provider
+            self.model_name = model_name
 
         def with_structured_output(self, schema):
-            calls.append((self.provider, schema.__name__))
+            calls.append((self.provider, self.model_name, schema.__name__))
             return RunnableLambda(lambda _messages: self.provider)
 
     monkeypatch.setattr(model_provider, "settings", _settings())
     monkeypatch.setattr(
         model_provider,
         "build_chat_model",
-        lambda provider: FakeModel(provider),
+        lambda provider, model_name=None: FakeModel(provider, model_name),
     )
 
     class ExampleSchema:
@@ -106,4 +109,56 @@ def test_structured_factory_builds_models_in_configured_order(monkeypatch):
 
     runnable = model_provider.get_structured_chat_model(ExampleSchema)
     assert runnable.invoke([]) == "openai"
-    assert calls == [("openai", "ExampleSchema"), ("anthropic", "ExampleSchema")]
+    assert calls == [
+        ("openai", "gpt-test", "ExampleSchema"),
+        ("anthropic", "claude-test", "ExampleSchema"),
+    ]
+
+
+def test_profile_extraction_uses_fast_model_then_standard_fallback(monkeypatch):
+    calls = []
+
+    class FakeModel:
+        def __init__(self, provider, model_name):
+            self.provider = provider
+            self.model_name = model_name
+
+        def with_structured_output(self, schema):
+            calls.append((self.provider, self.model_name, schema.__name__))
+            return RunnableLambda(lambda _messages: self.model_name)
+
+    monkeypatch.setattr(model_provider, "settings", _settings())
+    monkeypatch.setattr(
+        model_provider,
+        "build_chat_model",
+        lambda provider, model_name=None: FakeModel(provider, model_name),
+    )
+
+    class ProfileExtraction:
+        pass
+
+    runnable = model_provider.get_structured_chat_model(ProfileExtraction)
+    assert runnable.invoke([]) == "gpt-fast"
+    assert calls == [
+        ("openai", "gpt-fast", "ProfileExtraction"),
+        ("openai", "gpt-test", "ProfileExtraction"),
+        ("anthropic", "claude-fast", "ProfileExtraction"),
+        ("anthropic", "claude-test", "ProfileExtraction"),
+    ]
+
+
+def test_duplicate_profile_and_standard_models_are_not_repeated(monkeypatch):
+    monkeypatch.setattr(
+        model_provider,
+        "settings",
+        _settings(
+            openai_profile_model="gpt-test",
+            anthropic_profile_model="claude-test",
+        ),
+    )
+    assert model_provider._structured_model_candidates(
+        "openai", "ProfileExtraction"
+    ) == ("gpt-test",)
+    assert model_provider._structured_model_candidates(
+        "anthropic", "ProfileExtraction"
+    ) == ("claude-test",)
