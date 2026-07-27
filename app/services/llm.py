@@ -6,6 +6,7 @@ from typing import Any
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
+from app.application_pack import detect_application_channel
 from app.email_composer import (
     compose_grounded_email_draft,
     deterministic_fallback_selection,
@@ -57,7 +58,12 @@ def analyze_job_offer(job_text: str) -> JobAnalysis:
         SystemMessage(content=JOB_ANALYSIS_SYSTEM_PROMPT),
         HumanMessage(content=f"Job offer:\n{job_text}"),
     ]
-    return structured_llm.invoke(messages)
+    result = structured_llm.invoke(messages)
+    detected_channel = detect_application_channel(
+        job_text,
+        llm_channel=result.application_channel,
+    )
+    return result.model_copy(update={"application_channel": detected_channel})
 
 
 def generate_match_insight(
@@ -116,7 +122,7 @@ def _select_email_evidence(
         HumanMessage(
             content=(
                 "Select the strongest and most role-specific retrieved evidence for a concise "
-                "application email. Use relevance_score and aligned_job_terms as deterministic "
+                "application pack. Use relevance_score and aligned_job_terms as deterministic "
                 "audit signals, while checking the underlying memory content.\n\n"
                 "Job analysis:\n"
                 f"{json.dumps(job_analysis.model_dump(), indent=2)}\n\n"
@@ -127,7 +133,6 @@ def _select_email_evidence(
             )
         ),
     ]
-
     try:
         selection = structured_llm.invoke(messages)
         validate_memory_selection(selection, ranked_records)
@@ -138,7 +143,7 @@ def _select_email_evidence(
                 "The previous evidence selection was invalid. Return only one to three IDs "
                 "that appear exactly in the ranked memory records. Prefer positive relevance "
                 "scores, explicit aligned_job_terms and evidence-type diversity. Do not write "
-                "claims or email prose.\n\n"
+                "claims or application prose.\n\n"
                 f"Selection error: {first_error}"
             )
         )
@@ -148,7 +153,7 @@ def _select_email_evidence(
             return selection
         except Exception as second_error:
             logger.warning(
-                "Email evidence selection failed twice; using deterministic relevance-aware "
+                "Application evidence selection failed twice; using deterministic relevance-aware "
                 "fallback. Error: %s",
                 second_error,
             )
