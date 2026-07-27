@@ -25,6 +25,7 @@ from app.services.profile_store import (
     load_user_profile_memories,
     save_user_profile_memories,
 )
+from app.services.usage_quota import UsageQuotaExceeded, consume_ai_operation
 from app.tenancy import ensure_user_directories
 
 
@@ -122,6 +123,7 @@ def _render_cv_import(user_id: str) -> None:
             documents = prepare_cv_documents(
                 [(upload.name, upload.getvalue()) for upload in uploads]
             )
+            consume_ai_operation(user_id, "cv_extraction")
             with st.spinner("Extracting conservative profile facts for your review..."):
                 with capture_llm_telemetry() as events:
                     extraction = extract_profile_facts(documents)
@@ -140,6 +142,8 @@ def _render_cv_import(user_id: str) -> None:
                 f"{len(rows)} proposed facts found. Review every row below before activation."
             )
             st.rerun()
+        except UsageQuotaExceeded as exc:
+            st.warning(str(exc))
         except Exception as exc:
             st.error(str(exc))
 
