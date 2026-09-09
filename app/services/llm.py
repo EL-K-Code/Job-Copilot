@@ -26,22 +26,40 @@ from app.schemas import (
     MatchInsight,
 )
 from app.services.model_provider import get_structured_chat_model
+from app.services.model_routing import route_job_analysis, route_operation
 
 
 logger = logging.getLogger(__name__)
 MemoryInput = dict[str, Any] | str
 
 
-def get_job_analysis_llm():
-    return get_structured_chat_model(JobAnalysis)
+def get_job_analysis_llm(job_text: str | None = None):
+    route = route_job_analysis(job_text) if job_text is not None else route_operation("JobAnalysis")
+    return get_structured_chat_model(JobAnalysis, route=route, operation="JobAnalysis")
 
 
-def get_match_insight_llm():
-    return get_structured_chat_model(MatchInsight)
+def get_match_insight_llm(*, escalated: bool = False, reason: str = ""):
+    route = route_operation(
+        "MatchInsight",
+        escalated=escalated,
+        reason=reason,
+    )
+    operation = "MatchInsightRepair" if escalated else "MatchInsight"
+    return get_structured_chat_model(MatchInsight, route=route, operation=operation)
 
 
-def get_email_evidence_selection_llm():
-    return get_structured_chat_model(EmailEvidenceSelection)
+def get_email_evidence_selection_llm(*, escalated: bool = False, reason: str = ""):
+    route = route_operation(
+        "EmailEvidenceSelection",
+        escalated=escalated,
+        reason=reason,
+    )
+    operation = "EmailEvidenceSelectionRepair" if escalated else "EmailEvidenceSelection"
+    return get_structured_chat_model(
+        EmailEvidenceSelection,
+        route=route,
+        operation=operation,
+    )
 
 
 def get_email_draft_llm():
@@ -53,7 +71,7 @@ def analyze_job_offer(job_text: str) -> JobAnalysis:
     if not job_text.strip():
         raise ValueError("The job offer text cannot be empty.")
 
-    structured_llm = get_job_analysis_llm()
+    structured_llm = get_job_analysis_llm(job_text)
     messages = [
         SystemMessage(content=JOB_ANALYSIS_SYSTEM_PROMPT),
         HumanMessage(content=f"Job offer:\n{job_text}"),
@@ -98,13 +116,17 @@ def generate_match_insight(
                 f"{json.dumps(result.model_dump(), indent=2)}"
             )
         )
-        result = structured_llm.invoke([*messages, repair_message])
+        repair_llm = get_match_insight_llm(
+            escalated=True,
+            reason="claim_evidence_validation_failed",
+        )
+        result = repair_llm.invoke([*messages, repair_message])
         try:
             validate_claim_evidence(result.supported_claims, memory_records)
         except ValueError as second_error:
             raise RuntimeError(
                 "The profile-to-job match could not satisfy the evidence contract after "
-                "one repair attempt."
+                "one strong-tier repair attempt."
             ) from second_error
     return result
 
@@ -114,7 +136,7 @@ def _select_email_evidence(
     match_insight: MatchInsight,
     memory_records: list[dict[str, Any]],
 ) -> EmailEvidenceSelection:
-    """Select from auditable relevance-ranked memories, with a safe fallback."""
+    """Select from auditable relevance-ranked memories, escalating only after validation failure."""
     structured_llm = get_email_evidence_selection_llm()
     ranked_records = rank_memory_records_for_job(job_analysis, memory_records)
     messages = [
@@ -144,18 +166,21 @@ def _select_email_evidence(
                 "that appear exactly in the ranked memory records. Prefer positive relevance "
                 "scores, explicit aligned_job_terms and evidence-type diversity. Do not write "
                 "claims or application prose.\n\n"
-                f"Selection error: {first_error}"
+                f"Selection error: {type(first_error).__name__}"
             )
         )
         try:
-            selection = structured_llm.invoke([*messages, repair_message])
+            repair_llm = get_email_evidence_selection_llm(
+                escalated=True,
+                reason="memory_selection_validation_failed",
+            )
+            selection = repair_llm.invoke([*messages, repair_message])
             validate_memory_selection(selection, ranked_records)
             return selection
         except Exception as second_error:
             logger.warning(
-                "Application evidence selection failed twice; using deterministic relevance-aware "
-                "fallback. Error: %s",
-                second_error,
+                "Application evidence selection failed after strong-tier repair; using deterministic relevance-aware fallback. Error type: %s",
+                type(second_error).__name__,
             )
             return deterministic_fallback_selection(
                 ranked_records,
