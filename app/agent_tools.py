@@ -44,11 +44,14 @@ def build_agent_tools(
 
     The bound user ID and candidate display name are intentionally absent from every
     public tool schema, so the language model cannot select, replace or spoof either value.
-    Hosted recruiter demos exclude Gmail and Calendar tools entirely.
+    Hosted recruiter demos expose Google tools only when hosted OAuth is explicitly enabled.
     """
     bound_user_id = normalize_user_id(user_id) if user_id is not None else None
     if include_google is None:
-        include_google = not settings.hosted_recruiter_demo
+        include_google = (
+            not settings.hosted_recruiter_demo
+            or bool(getattr(settings, "hosted_google_oauth_enabled", False))
+        )
 
     @tool
     def run_jobcopilot_pipeline_tool(job_text: str) -> dict[str, Any]:
