@@ -6,9 +6,11 @@ on:
     paths:
       - "app/retrieval.py"
       - "app/services/evaluation_observability.py"
+      - "app/ui/evaluation_dashboard.py"
       - "evaluation/retrieval_cases.v1.jsonl"
       - "scripts/evaluate_retrieval.py"
       - "scripts/summarize_retrieval_report.py"
+      - "tests/test_retrieval_summary.py"
       - "requirements.txt"
       - ".github/workflows/retrieval-benchmark.yml"
 
@@ -109,6 +111,7 @@ jobs:
                   + f" | {aggregate.get('mean_latency_ms', 0.0):.1f}"
                   + f" | {aggregate.get('p95_latency_ms', 0.0):.1f} |"
               )
+
           rerank_delta = summary.get("delta_vs_dense", {}).get("hybrid_rerank", {})
           if rerank_delta:
               lines.extend(
@@ -122,11 +125,27 @@ jobs:
                       f"- P95 warm latency: {rerank_delta.get('p95_latency_ms', 0.0):+.1f} ms",
                   ]
               )
+
+          paired = summary.get("paired_vs_dense", {}).get("hybrid_rerank", {})
+          if paired:
+              lines.extend(["", "## Paired quality uncertainty vs dense"])
+              for metric in ("mrr", "recall@5", "ndcg@5"):
+                  stats = paired.get(metric, {})
+                  if not stats:
+                      continue
+                  ci = stats.get("bootstrap_ci95", [0.0, 0.0])
+                  lines.append(
+                      f"- {metric}: mean delta {stats.get('mean_delta', 0.0):+.4f}; "
+                      f"95% paired-bootstrap CI [{ci[0]:+.4f}, {ci[1]:+.4f}]; "
+                      f"W/T/L {stats.get('wins', 0)}/{stats.get('ties', 0)}/{stats.get('losses', 0)}"
+                  )
+
           lines.extend(
               [
                   "",
                   "All strategies are evaluated on the same fictional public profile and labeled retrieval cases.",
                   "Latency is measured after one strategy-specific warm-up, so cold model-loading time is excluded.",
+                  "Paired bootstrap intervals quantify uncertainty over these benchmark cases only.",
                   "These are retrieval-regression metrics, not recruiter or hiring outcomes.",
                   "The complete case-level report and compact summary are available in the workflow artifact.",
               ]
