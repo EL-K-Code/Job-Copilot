@@ -67,7 +67,10 @@ def save_user_profile_memories(
 
 
 def load_user_profile_memories(user_id: str) -> list[dict[str, Any]]:
-    return load_profile_memories(user_id=user_id)
+    normalized = normalize_user_id(user_id)
+    if using_supabase():
+        return load_profile_memories(user_id=normalized)
+    return load_profile_memories(file_path=get_user_paths(normalized).profile_memories)
 
 
 def export_user_data(user_id: str) -> bytes:
