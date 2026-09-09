@@ -18,6 +18,8 @@ jobs:
     env:
       PROFILE_MEMORIES_FILE: data/profile_memories.example.json
       ALLOW_TRUSTED_FAISS_DESERIALIZATION: "false"
+      RETRIEVAL_STRATEGY: "hybrid"
+      RETRIEVAL_RERANKER_ENABLED: "true"
       PYTHONUNBUFFERED: "1"
       TOKENIZERS_PARALLELISM: "false"
 
@@ -35,7 +37,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/huggingface
-          key: ${{ runner.os }}-huggingface-all-MiniLM-L6-v2-v1
+          key: ${{ runner.os }}-huggingface-premium-retrieval-v1
 
       - name: Install dependencies
         run: |
@@ -45,12 +47,13 @@ jobs:
       - name: Validate benchmark integrity
         run: python scripts/validate_benchmark.py
 
-      - name: Run retrieval benchmark
+      - name: Run comparative retrieval benchmark
         run: |
           python scripts/evaluate_retrieval.py \
             --dataset evaluation/retrieval_cases.v1.jsonl \
             --output evaluation/results/retrieval_report.json \
-            --k 5
+            --k 5 \
+            --strategies dense hybrid hybrid_rerank
 
       - name: Publish run summary
         run: |
@@ -62,23 +65,39 @@ jobs:
           report = json.loads(
               Path("evaluation/results/retrieval_report.json").read_text(encoding="utf-8")
           )
-          aggregate = report.get("aggregate", {})
+          labels = {
+              "dense": "Dense FAISS",
+              "hybrid": "FAISS + BM25 + RRF",
+              "hybrid_rerank": "Hybrid + cross-encoder",
+          }
           lines = [
               "# JobCopilot Retrieval Benchmark",
               "",
               f"- Cases evaluated: {report.get('number_of_cases', 0)}",
-              "- Embedding model: `sentence-transformers/all-MiniLM-L6-v2`",
-              f"- MRR: {aggregate.get('mrr', 0.0):.4f}",
-              f"- Recall@1: {aggregate.get('recall@1', 0.0):.4f}",
-              f"- Recall@3: {aggregate.get('recall@3', 0.0):.4f}",
-              f"- Recall@5: {aggregate.get('recall@5', 0.0):.4f}",
-              f"- NDCG@1: {aggregate.get('ndcg@1', 0.0):.4f}",
-              f"- NDCG@3: {aggregate.get('ndcg@3', 0.0):.4f}",
-              f"- NDCG@5: {aggregate.get('ndcg@5', 0.0):.4f}",
+              "- Dense model: `sentence-transformers/all-MiniLM-L6-v2`",
+              "- Reranker: `cross-encoder/ms-marco-MiniLM-L-6-v2`",
               "",
-              "This workflow uses the fictional public profile only and requires no Anthropic secret.",
-              "The complete ranked case-level report is available in the workflow artifact.",
+              "| Strategy | MRR | Recall@1 | Recall@3 | Recall@5 | NDCG@5 |",
+              "|---|---:|---:|---:|---:|---:|",
           ]
+          for name, payload in report.get("strategies", {}).items():
+              aggregate = payload.get("aggregate", {})
+              lines.append(
+                  "| "
+                  + labels.get(name, name)
+                  + f" | {aggregate.get('mrr', 0.0):.4f}"
+                  + f" | {aggregate.get('recall@1', 0.0):.4f}"
+                  + f" | {aggregate.get('recall@3', 0.0):.4f}"
+                  + f" | {aggregate.get('recall@5', 0.0):.4f}"
+                  + f" | {aggregate.get('ndcg@5', 0.0):.4f} |"
+              )
+          lines.extend(
+              [
+                  "",
+                  "All strategies are evaluated on the same fictional public profile and labeled retrieval cases.",
+                  "The complete case-level rankings are available in the workflow artifact.",
+              ]
+          )
           with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as handle:
               handle.write("\n".join(lines) + "\n")
           PY
