@@ -34,6 +34,13 @@ def _candidate_name_for_user(user_id: str | None) -> str:
     return str(user.get("display_name", "")).strip()
 
 
+def _hosted_google_connection_required() -> bool:
+    return bool(
+        settings.hosted_recruiter_demo
+        and getattr(settings, "hosted_google_oauth_enabled", False)
+    )
+
+
 def build_agent_tools(
     user_id: str | None = None,
     *,
@@ -111,7 +118,11 @@ def build_agent_tools(
                     "body": body,
                 },
             }
-        if bound_user_id is not None and not google_token_exists(bound_user_id):
+        if (
+            bound_user_id is not None
+            and _hosted_google_connection_required()
+            and not google_token_exists(bound_user_id)
+        ):
             return {
                 "status": "google_not_connected",
                 "message": "Connect Google in Settings before creating a Gmail draft.",
@@ -150,7 +161,11 @@ def build_agent_tools(
                     "followup_date": followup_date,
                 },
             }
-        if bound_user_id is not None and not google_token_exists(bound_user_id):
+        if (
+            bound_user_id is not None
+            and _hosted_google_connection_required()
+            and not google_token_exists(bound_user_id)
+        ):
             return {
                 "status": "google_not_connected",
                 "message": "Connect Google in Settings before creating a Calendar reminder.",
