@@ -92,9 +92,10 @@ jobs:
               "- Dense model: `sentence-transformers/all-MiniLM-L6-v2`",
               "- Reranker: `cross-encoder/ms-marco-MiniLM-L-6-v2`",
               "- Benchmark type: synthetic engineering regression",
+              f"- Latency scope: `{summary.get('latency_scope', 'unknown')}`",
               "",
-              "| Strategy | MRR | Recall@1 | Recall@3 | Recall@5 | NDCG@5 |",
-              "|---|---:|---:|---:|---:|---:|",
+              "| Strategy | MRR | Recall@1 | Recall@3 | Recall@5 | NDCG@5 | Mean ms | P95 ms |",
+              "|---|---:|---:|---:|---:|---:|---:|---:|",
           ]
           for name, aggregate in summary.get("strategies", {}).items():
               lines.append(
@@ -104,7 +105,9 @@ jobs:
                   + f" | {aggregate.get('recall@1', 0.0):.4f}"
                   + f" | {aggregate.get('recall@3', 0.0):.4f}"
                   + f" | {aggregate.get('recall@5', 0.0):.4f}"
-                  + f" | {aggregate.get('ndcg@5', 0.0):.4f} |"
+                  + f" | {aggregate.get('ndcg@5', 0.0):.4f}"
+                  + f" | {aggregate.get('mean_latency_ms', 0.0):.1f}"
+                  + f" | {aggregate.get('p95_latency_ms', 0.0):.1f} |"
               )
           rerank_delta = summary.get("delta_vs_dense", {}).get("hybrid_rerank", {})
           if rerank_delta:
@@ -115,12 +118,15 @@ jobs:
                       f"- MRR: {rerank_delta.get('mrr', 0.0):+.4f}",
                       f"- Recall@5: {rerank_delta.get('recall@5', 0.0):+.4f}",
                       f"- NDCG@5: {rerank_delta.get('ndcg@5', 0.0):+.4f}",
+                      f"- Mean warm latency: {rerank_delta.get('mean_latency_ms', 0.0):+.1f} ms",
+                      f"- P95 warm latency: {rerank_delta.get('p95_latency_ms', 0.0):+.1f} ms",
                   ]
               )
           lines.extend(
               [
                   "",
                   "All strategies are evaluated on the same fictional public profile and labeled retrieval cases.",
+                  "Latency is measured after one strategy-specific warm-up, so cold model-loading time is excluded.",
                   "These are retrieval-regression metrics, not recruiter or hiring outcomes.",
                   "The complete case-level report and compact summary are available in the workflow artifact.",
               ]
