@@ -150,9 +150,11 @@ def _render_published_benchmark() -> None:
         )
         return
 
+    latency_scope = str(report.get("latency_scope", "unknown")).replace("_", " ")
     st.caption(
         f"{int(report.get('number_of_cases', 0))} labeled synthetic queries · "
-        f"top-{int(report.get('k', 5))} retrieval · same fictional public profile for every strategy."
+        f"top-{int(report.get('k', 5))} retrieval · same fictional public profile for every strategy · "
+        f"latency: {latency_scope}."
     )
 
     rows = []
@@ -165,18 +167,23 @@ def _render_published_benchmark() -> None:
                 "Recall@3": round(float(metrics.get("recall@3", 0.0)), 4),
                 "Recall@5": round(float(metrics.get("recall@5", 0.0)), 4),
                 "NDCG@5": round(float(metrics.get("ndcg@5", 0.0)), 4),
+                "Mean latency (ms)": round(float(metrics.get("mean_latency_ms", 0.0)), 1),
+                "P95 latency (ms)": round(float(metrics.get("p95_latency_ms", 0.0)), 1),
             }
         )
     if rows:
         st.dataframe(rows, use_container_width=True, hide_index=True)
 
     best = report.get("best_by_metric", {})
+    key_metrics = ("mrr", "recall@5", "ndcg@5", "mean_latency_ms")
     if best:
         best_text = " · ".join(
-            f"{escape(str(metric))}: {_STRATEGY_LABELS.get(str(strategy), str(strategy))}"
-            for metric, strategy in best.items()
+            f"{escape(metric)}: {_STRATEGY_LABELS.get(str(best[metric]), str(best[metric]))}"
+            for metric in key_metrics
+            if metric in best
         )
-        st.caption("Best measured strategy by metric · " + best_text)
+        if best_text:
+            st.caption("Best measured strategy by selected metric · " + best_text)
 
     deltas = report.get("delta_vs_dense", {})
     rerank_delta = deltas.get("hybrid_rerank", {}) if isinstance(deltas, dict) else {}
@@ -184,9 +191,12 @@ def _render_published_benchmark() -> None:
         st.write(
             "**Hybrid + reranker vs dense baseline:** "
             + ", ".join(
-                f"{metric} {float(value):+.4f}"
-                for metric, value in rerank_delta.items()
-                if metric in {"mrr", "recall@5", "ndcg@5"}
+                [
+                    f"MRR {float(rerank_delta.get('mrr', 0.0)):+.4f}",
+                    f"Recall@5 {float(rerank_delta.get('recall@5', 0.0)):+.4f}",
+                    f"NDCG@5 {float(rerank_delta.get('ndcg@5', 0.0)):+.4f}",
+                    f"mean latency {float(rerank_delta.get('mean_latency_ms', 0.0)):+.1f} ms",
+                ]
             )
         )
 
@@ -223,6 +233,7 @@ def render_evaluation_dashboard(_user: dict[str, str]) -> None:
 - **Recall@K**: fraction of labeled relevant memories found in the first K retrieval results.
 - **MRR**: rewards putting the first relevant memory near the top of the ranking.
 - **NDCG@K**: measures ranking quality while rewarding relevant evidence higher in the list.
+- **Retrieval latency**: warm-process timing after one strategy-specific warm-up, so one-off model loading is not mixed into steady-state ranking latency.
 - **LLM runtime metrics**: provider attempts, latency, token usage when available, and fallback behavior without retaining prompt or CV text.
             """
         )
