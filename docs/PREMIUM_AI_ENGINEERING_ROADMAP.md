@@ -55,46 +55,21 @@ This is exactly why the retrieval strategies remain configurable: later evaluati
 
 Status: **implemented and validated in CI**.
 
-The product now has a dedicated **AI Evaluation** surface that separates two kinds of evidence:
+The product has a dedicated **AI Evaluation** surface separating runtime diagnostics from offline synthetic benchmark evidence.
 
-1. **runtime diagnostics** for the current application analysis;
-2. **offline synthetic benchmark metrics** produced from versioned labeled evaluation data.
-
-Runtime metrics:
-
-- grounding integrity: factual claim count, grounded claims, unsupported claims and unknown evidence IDs;
-- evidence coverage: share of factual email claims linked to retrieved verified memories;
-- offer-term evidence coverage: share of explicit offer terms aligned to selected candidate evidence;
-- retrieval trace: dense, sparse, RRF and reranker provenance for returned evidence;
-- system runtime: successful/failed provider attempts, fallback behavior, total and per-operation latency;
-- token usage: input/output/total tokens when the provider exposes usage metadata.
-
-Offline evaluation:
-
-- retrieval: MRR, Recall@1/3/5 and NDCG@1/3/5;
-- warm-process retrieval latency: mean, median and P95;
-- comparative strategies: dense FAISS vs hybrid FAISS+BM25+RRF vs hybrid+cross-encoder;
-- compact aggregate benchmark summary with deltas against the dense baseline;
-- extraction and claim-grounding benchmark tooling retained as separate evaluation tracks.
+Runtime metrics include grounding integrity, evidence coverage, retrieval provenance, LLM provider/model attempts, latency and token usage when exposed. Offline evaluation includes MRR, Recall@K, NDCG@K, paired bootstrap uncertainty and retrieval latency across dense, hybrid and reranked strategies.
 
 Engineering constraints:
 
-- the evaluation dashboard adds no extra LLM call merely to score a run;
-- RRF and cross-encoder scores are treated as ranking signals, never fake probabilities;
+- the dashboard adds no extra LLM call merely to score a run;
+- ranking scores are not presented as fake probabilities;
 - prompts, CV facts, job text, generated content, API keys and OAuth tokens are excluded from telemetry;
-- current-run observability remains session-scoped rather than creating a new store of candidate text;
-- published benchmark summaries contain aggregate metrics only, not case text or user data;
-- synthetic evaluation is labeled as synthetic and is never presented as recruiter-outcome evidence.
-
-Acceptance criteria:
-
-- every published metric is tied to a versioned dataset and configuration;
-- benchmark artifacts are reproducible in GitHub Actions;
-- measured benchmark numbers are reviewed before being turned into README or CV claims.
+- published benchmark summaries contain aggregate metrics only;
+- synthetic evaluation is never presented as recruiter-outcome evidence.
 
 ## Phase 3 — Stateful application agent with human approval gates
 
-Target workflow:
+Status: **implemented and validated in CI**.
 
 ```text
 DISCOVERED
@@ -109,46 +84,68 @@ APPLIED
    ↓
 FOLLOW_UP_DUE
    ↓
-INTERVIEW / REJECTED / OFFER
+INTERVIEW / REJECTED / OFFER / CLOSED
 ```
 
-The agent may prepare work autonomously, but consequential external actions remain human-supervised.
+The LLM can analyze and prepare work, while consequential lifecycle facts remain deterministic and human-supervised.
 
-Engineering requirements:
+Implemented guarantees:
 
-- explicit state transitions and persisted application state;
-- idempotent Gmail/Calendar actions;
-- retries that cannot duplicate an external action;
-- confirmation gates before external writes;
-- clear audit trail for what the agent proposed, what the user approved and what tool executed;
-- safe handling of partial failures and resumed sessions.
+- explicit persisted state transitions;
+- human confirmation before `APPLIED`;
+- user-reported confirmation before interview/rejection/offer outcomes;
+- append-only workflow audit events;
+- idempotency keys for workflow-bound Gmail and Calendar side effects;
+- Gmail draft creation does not imply submission;
+- Calendar reminder creation does not imply a follow-up was sent;
+- legacy tracker records remain backward compatible.
+
+See `docs/AGENTIC_APPLICATION_WORKFLOW.md`.
 
 ## Phase 4 — Confidence-aware model routing
 
-Use the smallest model that satisfies a task's quality requirement, then escalate only when needed.
+Status: **routing implementation complete; adaptive-vs-single empirical benchmark pending**.
 
-Example routing policy:
+The routing principle is to use the smallest configured tier that satisfies a task contract, then escalate only when deterministic quality signals justify it.
 
 ```text
-structured extraction ───────► small / low-cost model
-simple grounded synthesis ───► standard model
-low confidence / ambiguity ──► stronger fallback model
+Profile extraction ─────────────► economy
+Normal structured extraction ───► economy
+Complex/long job extraction ────► standard
+Grounded matching ───────────────► standard
+Agent/tool reasoning ────────────► standard
+quality-contract failure ────────► strong repair
 ```
 
-Measure:
+Implemented engineering controls:
 
-- quality by task class;
-- latency by provider/model;
-- cost per successful application analysis;
-- escalation/fallback rate;
-- quality delta versus a single large-model baseline.
+- `adaptive` and backward-compatible `single` routing modes;
+- provider-specific economy, standard and strong model tiers;
+- deterministic long-offer routing without an extra classifier call;
+- strong-tier escalation after claim/evidence validation failure;
+- strong-tier escalation after memory-selection validation failure;
+- provider fallback preserved independently of task routing;
+- tier/model deduplication when two logical tiers use the same physical model;
+- route tier, route reason and escalation telemetry;
+- token-based cost estimation only when a versioned/configurable pricing catalog is supplied;
+- no hard-coded provider prices;
+- AI Evaluation UI exposes routing, escalation, latency, tokens, cost coverage and estimated cost;
+- adaptive-vs-single report comparator verifies dataset/prompt/protocol identity before comparing results.
 
-A future pricing layer must use explicit versioned/configurable provider rates rather than hard-coded cost assumptions that silently become stale.
+The system does **not** trust model self-reported confidence. Escalation is tied to deterministic validation failures.
+
+Remaining acceptance criterion before making optimization claims:
+
+- run the same versioned labeled benchmark under `adaptive` and `single` modes;
+- compare task quality, latency, token usage, explicit-price cost, escalation rate and fallback rate;
+- publish only measured deltas and keep recruiter/hiring outcome claims out of scope.
+
+See `docs/CONFIDENCE_AWARE_MODEL_ROUTING.md`.
 
 ## Product principle
 
 The premium system should be explainable as:
 
-> An evidence-grounded job application copilot that retrieves verified candidate facts, measures retrieval and grounding quality, orchestrates a stateful application workflow, and keeps Gmail/Calendar actions behind explicit human approval.
+> An evidence-grounded job application copilot that retrieves verified candidate facts, measures retrieval and grounding quality, routes model capacity by task and deterministic quality signals, orchestrates a stateful application workflow, and keeps Gmail/Calendar actions behind explicit human approval.
 
 The LLM is one component of the system, not the system itself.

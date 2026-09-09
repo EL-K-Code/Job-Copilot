@@ -32,6 +32,16 @@ def _seconds(milliseconds: Any) -> str:
         return "—"
 
 
+def _usd(value: Any) -> str:
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return "Not configured"
+    if numeric < 0.01:
+        return f"${numeric:.5f}"
+    return f"${numeric:.3f}"
+
+
 def _render_runtime_quality(results: dict[str, Any]) -> None:
     summary = summarize_application_observability(results)
     grounding = summary["grounding"]
@@ -64,7 +74,7 @@ def _render_runtime_quality(results: dict[str, Any]) -> None:
         if grounding["unknown_memory_ids"]:
             st.caption("Unknown memory IDs: " + ", ".join(grounding["unknown_memory_ids"]))
 
-    retrieval_tab, llm_tab = st.tabs(["Retrieval trace", "LLM runtime"])
+    retrieval_tab, llm_tab = st.tabs(["Retrieval trace", "LLM routing & runtime"])
     with retrieval_tab:
         left, middle, right, fourth = st.columns(4)
         left.metric("Evidence returned", retrieval["evidence_count"])
@@ -100,42 +110,70 @@ def _render_runtime_quality(results: dict[str, Any]) -> None:
         )
 
     with llm_tab:
-        call_col, latency_col, token_col, fallback_col = st.columns(4)
-        call_col.metric("Successful LLM calls", llm["successful_calls"])
+        call_col, latency_col, token_col, escalation_col, cost_col = st.columns(5)
+        call_col.metric("Successful calls", llm["successful_calls"])
         latency_col.metric("LLM wall time", _seconds(llm["total_duration_ms"]))
         token_col.metric(
             "Tokens",
             f"{int(llm['total_tokens']):,}" if isinstance(llm.get("total_tokens"), int) else "Unavailable",
         )
-        fallback_col.metric("Provider fallback", "Used" if llm["fallback_used"] else "No")
+        escalation_col.metric(
+            "Strong-tier escalation",
+            f"{int(llm.get('escalation_attempts', 0))}",
+        )
+        cost_col.metric("Estimated cost", _usd(llm.get("estimated_cost_usd")))
 
+        route_label = " → ".join(str(item) for item in llm.get("route_tiers", []) or []) or "legacy/unreported"
         st.write(
             f"**Final provider/model:** {str(llm.get('final_provider') or 'unknown').title()} · "
-            f"{llm.get('final_model') or 'unknown'}"
+            f"{llm.get('final_model') or 'unknown'} · tier `{llm.get('final_routing_tier') or 'unknown'}`"
+        )
+        st.write(
+            f"**Route tiers attempted:** {route_label} · "
+            f"**Provider fallback:** {'used' if llm['fallback_used'] else 'not used'} · "
+            f"**Escalation rate:** {_pct(llm.get('escalation_rate', 0.0))}"
         )
         st.write(
             f"**Attempt success rate:** {_pct(llm['success_rate'])} · "
             f"**P95 successful-call latency:** {_seconds(llm['p95_success_latency_ms'])}"
         )
 
+        if llm.get("estimated_cost_usd") is None:
+            st.info(
+                "Cost estimation is disabled until LLM_PRICING_JSON contains explicit rates for the models actually used. "
+                "JobCopilot does not ship hidden hard-coded provider prices."
+            )
+        else:
+            st.caption(
+                f"Pricing catalog: {llm.get('pricing_version') or 'unconfigured'} · "
+                f"priced-call coverage: {_pct(llm.get('cost_coverage', 0.0))}."
+            )
+
         operation_rows = []
         for operation, metrics in llm.get("operation_breakdown", {}).items():
             operation_rows.append(
                 {
                     "operation": operation,
+                    "route_tiers": " → ".join(metrics.get("routing_tiers", []) or []),
                     "attempts": metrics.get("attempts", 0),
                     "success": metrics.get("successful_calls", 0),
                     "errors": metrics.get("failed_attempts", 0),
+                    "strong_escalations": metrics.get("escalated_attempts", 0),
                     "latency_s": round(float(metrics.get("duration_ms", 0) or 0) / 1000, 3),
                     "input_tokens": metrics.get("input_tokens") if metrics.get("token_usage_available") else None,
                     "output_tokens": metrics.get("output_tokens") if metrics.get("token_usage_available") else None,
+                    "estimated_cost_usd": (
+                        round(float(metrics.get("estimated_cost_usd", 0.0)), 6)
+                        if metrics.get("priced_calls", 0)
+                        else None
+                    ),
                 }
             )
         if operation_rows:
             st.dataframe(operation_rows, use_container_width=True, hide_index=True)
 
         st.caption(
-            "Telemetry contains provider/model, latency, token counts when exposed by the provider, "
+            "Routing telemetry contains provider/model, model tier, routing reason, latency, token counts when exposed, "
             "and error class only. Prompts, job text, CV facts, generated content, API keys and OAuth tokens are excluded."
         )
 
@@ -250,7 +288,7 @@ def render_evaluation_dashboard(_user: dict[str, str]) -> None:
     """Render the read-only AI quality and observability workspace."""
     st.markdown("## AI Evaluation")
     st.caption(
-        "Measure retrieval quality, grounding integrity and runtime behavior instead of treating a fluent LLM response as proof of quality."
+        "Measure retrieval quality, grounding integrity, model routing and runtime behavior instead of treating a fluent LLM response as proof of quality."
     )
 
     results = st.session_state.get("results")
@@ -258,7 +296,7 @@ def render_evaluation_dashboard(_user: dict[str, str]) -> None:
         _render_runtime_quality(results)
     else:
         st.info(
-            "Run an application analysis first. Its privacy-safe retrieval, grounding and LLM diagnostics will appear here."
+            "Run an application analysis first. Its privacy-safe retrieval, grounding, routing and LLM diagnostics will appear here."
         )
 
     st.divider()
@@ -275,6 +313,9 @@ def render_evaluation_dashboard(_user: dict[str, str]) -> None:
 - **NDCG@K**: measures ranking quality while rewarding relevant evidence higher in the list.
 - **Paired bootstrap CI**: uncertainty interval for the mean case-level quality delta between a challenger strategy and dense FAISS on this synthetic benchmark.
 - **Retrieval latency**: warm-process timing after one strategy-specific warm-up, so one-off model loading is not mixed into steady-state ranking latency.
-- **LLM runtime metrics**: provider attempts, latency, token usage when available, and fallback behavior without retaining prompt or CV text.
+- **Model tier**: economy, standard or strong route selected deterministically by task class and quality-gate outcome.
+- **Strong-tier escalation**: a retry caused by a deterministic grounding/selection validation failure, not by the model self-reporting low confidence.
+- **Estimated cost**: token-based estimate only when a versioned LLM_PRICING_JSON catalog explicitly covers the model used.
+- **LLM runtime metrics**: provider attempts, latency, token usage when available, routing tier and fallback behavior without retaining prompt or CV text.
             """
         )
