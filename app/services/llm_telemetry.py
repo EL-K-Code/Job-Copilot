@@ -8,6 +8,12 @@ from typing import Any, Iterator
 
 from langchain_core.runnables import Runnable, RunnableConfig
 
+from app.services.llm_pricing import (
+    estimate_event_cost_usd,
+    load_pricing_catalog,
+    pricing_version,
+)
+
 
 @dataclass(frozen=True)
 class LLMCallEvent:
@@ -25,9 +31,17 @@ class LLMCallEvent:
     output_tokens: int | None = None
     total_tokens: int | None = None
     error_type: str | None = None
+    routing_tier: str | None = None
+    routing_reason: str | None = None
+    routing_escalated: bool | None = None
 
     def model_dump(self) -> dict[str, Any]:
-        return asdict(self)
+        payload = asdict(self)
+        # Preserve the legacy telemetry schema for callers that do not use routing.
+        for key in ("routing_tier", "routing_reason", "routing_escalated"):
+            if payload.get(key) is None:
+                payload.pop(key, None)
+        return payload
 
 
 _TRACE_EVENTS: ContextVar[list[LLMCallEvent] | None] = ContextVar(
@@ -68,7 +82,7 @@ def _append_event(event: LLMCallEvent) -> None:
 
 
 class TelemetryRunnable(Runnable[Any, Any]):
-    """Runnable wrapper that records the provider actually attempted and used."""
+    """Runnable wrapper that records the provider/model route actually attempted."""
 
     def __init__(
         self,
@@ -77,11 +91,17 @@ class TelemetryRunnable(Runnable[Any, Any]):
         provider: str,
         model: str,
         operation: str,
+        routing_tier: str | None = None,
+        routing_reason: str | None = None,
+        routing_escalated: bool | None = None,
     ) -> None:
         self._runnable = runnable
         self.provider = provider
         self.model = model
         self.operation = operation
+        self.routing_tier = routing_tier
+        self.routing_reason = routing_reason
+        self.routing_escalated = routing_escalated
 
     def invoke(
         self,
@@ -101,6 +121,9 @@ class TelemetryRunnable(Runnable[Any, Any]):
                     status="error",
                     duration_ms=round((perf_counter() - started) * 1000),
                     error_type=type(exc).__name__,
+                    routing_tier=self.routing_tier,
+                    routing_reason=self.routing_reason,
+                    routing_escalated=self.routing_escalated,
                 )
             )
             raise
@@ -116,6 +139,9 @@ class TelemetryRunnable(Runnable[Any, Any]):
                 input_tokens=input_tokens,
                 output_tokens=output_tokens,
                 total_tokens=total_tokens,
+                routing_tier=self.routing_tier,
+                routing_reason=self.routing_reason,
+                routing_escalated=self.routing_escalated,
             )
         )
         return result
@@ -127,12 +153,18 @@ def instrument_llm_runnable(
     provider: str,
     model: str,
     operation: str,
+    routing_tier: str | None = None,
+    routing_reason: str | None = None,
+    routing_escalated: bool | None = None,
 ) -> TelemetryRunnable:
     return TelemetryRunnable(
         runnable,
         provider=provider,
         model=model,
         operation=operation,
+        routing_tier=routing_tier,
+        routing_reason=routing_reason,
+        routing_escalated=routing_escalated,
     )
 
 
@@ -170,6 +202,13 @@ def summarize_llm_events(events: list[LLMCallEvent] | list[dict[str, Any]]) -> d
     models_used = list(
         dict.fromkeys(str(event.get("model", "unknown")) for event in successes)
     )
+    route_tiers = list(
+        dict.fromkeys(
+            str(event["routing_tier"])
+            for event in normalized
+            if event.get("routing_tier")
+        )
+    )
     final_success = successes[-1] if successes else None
     success_durations = [
         int(event.get("duration_ms", 0) or 0)
@@ -180,6 +219,15 @@ def summarize_llm_events(events: list[LLMCallEvent] | list[dict[str, Any]]) -> d
         for event in normalized
     )
 
+    try:
+        catalog = load_pricing_catalog()
+        pricing_error = None
+    except ValueError as exc:
+        catalog = {}
+        pricing_error = type(exc).__name__
+
+    priced_successes = 0
+    estimated_cost_usd = 0.0
     operation_breakdown: dict[str, dict[str, Any]] = {}
     for event in normalized:
         operation = str(event.get("operation", "unknown"))
@@ -194,6 +242,10 @@ def summarize_llm_events(events: list[LLMCallEvent] | list[dict[str, Any]]) -> d
                 "output_tokens": 0,
                 "total_tokens": 0,
                 "token_usage_available": False,
+                "estimated_cost_usd": 0.0,
+                "priced_calls": 0,
+                "routing_tiers": [],
+                "escalated_attempts": 0,
             },
         )
         bucket["attempts"] += 1
@@ -207,10 +259,23 @@ def summarize_llm_events(events: list[LLMCallEvent] | list[dict[str, Any]]) -> d
             if isinstance(value, int):
                 bucket[field] += value
                 bucket["token_usage_available"] = True
+        tier = event.get("routing_tier")
+        if tier and tier not in bucket["routing_tiers"]:
+            bucket["routing_tiers"].append(tier)
+        if event.get("routing_escalated"):
+            bucket["escalated_attempts"] += 1
+
+        cost = estimate_event_cost_usd(event, catalog=catalog)
+        if event.get("status") == "success" and cost is not None:
+            priced_successes += 1
+            estimated_cost_usd += cost
+            bucket["priced_calls"] += 1
+            bucket["estimated_cost_usd"] += cost
 
     attempts = len(normalized)
     successful_calls = len(successes)
     failed_attempts = len(failures)
+    escalation_attempts = sum(1 for event in normalized if event.get("routing_escalated"))
     return {
         "attempts": attempts,
         "successful_calls": successful_calls,
@@ -219,8 +284,12 @@ def summarize_llm_events(events: list[LLMCallEvent] | list[dict[str, Any]]) -> d
         "error_rate": failed_attempts / attempts if attempts else 0.0,
         "providers_used": providers_used,
         "models_used": models_used,
+        "route_tiers": route_tiers,
+        "escalation_attempts": escalation_attempts,
+        "escalation_rate": escalation_attempts / attempts if attempts else 0.0,
         "final_provider": final_success.get("provider") if final_success else None,
         "final_model": final_success.get("model") if final_success else None,
+        "final_routing_tier": final_success.get("routing_tier") if final_success else None,
         "fallback_used": bool(failures and successes),
         "total_duration_ms": total_duration_ms,
         "mean_success_latency_ms": (
@@ -232,5 +301,10 @@ def summarize_llm_events(events: list[LLMCallEvent] | list[dict[str, Any]]) -> d
         "input_tokens": _sum_optional_ints(successes, "input_tokens"),
         "output_tokens": _sum_optional_ints(successes, "output_tokens"),
         "total_tokens": _sum_optional_ints(successes, "total_tokens"),
+        "pricing_version": pricing_version(),
+        "pricing_error": pricing_error,
+        "priced_successful_calls": priced_successes,
+        "cost_coverage": priced_successes / successful_calls if successful_calls else 0.0,
+        "estimated_cost_usd": estimated_cost_usd if priced_successes else None,
         "operation_breakdown": operation_breakdown,
     }
