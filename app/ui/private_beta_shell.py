@@ -13,6 +13,7 @@ from app.ui import hosted_google_oauth
 from app.ui import hosted_recruiter_demo as hosted
 from app.ui import premium_private_beta as premium
 from app.ui.application_workspace import render_application_workspace
+from app.ui.evaluation_dashboard import render_evaluation_dashboard
 from app.ui.premium_polish import inject_premium_polish
 from app.ui.profile_workspace import render_profile_gate, render_profile_page
 
@@ -21,6 +22,7 @@ NAV_ITEMS = [
     "Overview",
     "Profile",
     "New application",
+    "AI Evaluation",
     "Agent Chat",
     "Applications",
     "Settings",
@@ -155,6 +157,8 @@ def main() -> None:
             hosted.render_application_workspace(user)
         else:
             render_application_workspace(user)
+    elif page == "AI Evaluation":
+        render_evaluation_dashboard(user)
     elif page == "Agent Chat":
         if settings.hosted_recruiter_demo and not settings.hosted_google_oauth_enabled:
             hosted.render_agent_chat(user_id)
