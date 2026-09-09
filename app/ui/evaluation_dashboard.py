@@ -140,6 +140,44 @@ def _render_runtime_quality(results: dict[str, Any]) -> None:
         )
 
 
+def _render_paired_comparison(report: dict[str, Any]) -> None:
+    paired = report.get("paired_vs_dense", {})
+    if not isinstance(paired, dict) or not paired:
+        return
+
+    st.markdown("#### Paired quality comparison vs dense baseline")
+    st.caption(
+        "The same labeled queries are compared case by case. The 95% interval is a fixed-seed "
+        "paired bootstrap over benchmark cases; it quantifies benchmark uncertainty, not hiring-outcome uncertainty."
+    )
+
+    rows = []
+    for strategy, metrics_by_name in paired.items():
+        if not isinstance(metrics_by_name, dict):
+            continue
+        for metric in ("mrr", "recall@5", "ndcg@5"):
+            metrics = metrics_by_name.get(metric, {})
+            if not isinstance(metrics, dict) or not metrics:
+                continue
+            ci = metrics.get("bootstrap_ci95", [0.0, 0.0])
+            if not isinstance(ci, list) or len(ci) != 2:
+                ci = [0.0, 0.0]
+            rows.append(
+                {
+                    "strategy": _STRATEGY_LABELS.get(str(strategy), str(strategy)),
+                    "metric": metric,
+                    "mean delta": round(float(metrics.get("mean_delta", 0.0)), 4),
+                    "95% bootstrap CI": f"[{float(ci[0]):+.4f}, {float(ci[1]):+.4f}]",
+                    "wins": int(metrics.get("wins", 0)),
+                    "ties": int(metrics.get("ties", 0)),
+                    "losses": int(metrics.get("losses", 0)),
+                    "paired cases": int(metrics.get("paired_cases", 0)),
+                }
+            )
+    if rows:
+        st.dataframe(rows, use_container_width=True, hide_index=True)
+
+
 def _render_published_benchmark() -> None:
     st.markdown("### Synthetic retrieval benchmark")
     report = load_published_retrieval_summary()
@@ -200,6 +238,8 @@ def _render_published_benchmark() -> None:
             )
         )
 
+    _render_paired_comparison(report)
+
     st.warning(
         "Benchmark results are synthetic engineering regression metrics, not evidence that recruiters "
         "will respond more often or that the system improves real hiring outcomes."
@@ -233,6 +273,7 @@ def render_evaluation_dashboard(_user: dict[str, str]) -> None:
 - **Recall@K**: fraction of labeled relevant memories found in the first K retrieval results.
 - **MRR**: rewards putting the first relevant memory near the top of the ranking.
 - **NDCG@K**: measures ranking quality while rewarding relevant evidence higher in the list.
+- **Paired bootstrap CI**: uncertainty interval for the mean case-level quality delta between a challenger strategy and dense FAISS on this synthetic benchmark.
 - **Retrieval latency**: warm-process timing after one strategy-specific warm-up, so one-off model loading is not mixed into steady-state ranking latency.
 - **LLM runtime metrics**: provider attempts, latency, token usage when available, and fallback behavior without retaining prompt or CV text.
             """
