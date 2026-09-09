@@ -157,14 +157,19 @@ def list_namespace(namespace: str) -> list[dict[str, Any]]:
 
 
 def delete_user_state(user_id: str) -> None:
+    """Delete user-owned application/profile data while preserving the beta login record."""
     if not using_supabase():
         return
-    _request(
-        "DELETE",
-        "/rest/v1/jobcopilot_state",
-        params={"user_id": f"eq.{user_id}"},
-        prefer="return=minimal",
-    )
+    for namespace in ("profile_memories", "applications"):
+        _request(
+            "DELETE",
+            "/rest/v1/jobcopilot_state",
+            params={
+                "user_id": f"eq.{user_id}",
+                "namespace": f"eq.{namespace}",
+            },
+            prefer="return=minimal",
+        )
     _request(
         "DELETE",
         "/rest/v1/jobcopilot_usage",
