@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal
+from typing import Any, Literal
 
 from app.config import settings
 
@@ -78,29 +78,42 @@ def route_job_analysis(job_text: str) -> ModelRouteDecision:
     return route_operation("JobAnalysis")
 
 
-def provider_model_for_tier(provider: str, tier: ModelTier) -> str:
+def provider_model_for_tier(
+    provider: str,
+    tier: ModelTier,
+    *,
+    settings_obj: Any | None = None,
+) -> str:
+    """Resolve one logical tier from the settings object used by the provider factory."""
+    active_settings = settings if settings_obj is None else settings_obj
     normalized = provider.strip().lower()
     if normalized == "openai":
         if tier == "economy":
             return (
-                getattr(settings, "openai_economy_model", "")
-                or getattr(settings, "openai_profile_model", "")
-                or settings.openai_model
+                getattr(active_settings, "openai_economy_model", "")
+                or getattr(active_settings, "openai_profile_model", "")
+                or active_settings.openai_model
             )
         if tier == "strong":
-            return getattr(settings, "openai_strong_model", "") or settings.openai_model
-        return settings.openai_model
+            return (
+                getattr(active_settings, "openai_strong_model", "")
+                or active_settings.openai_model
+            )
+        return active_settings.openai_model
 
     if normalized == "anthropic":
         if tier == "economy":
             return (
-                getattr(settings, "anthropic_economy_model", "")
-                or getattr(settings, "anthropic_profile_model", "")
-                or settings.anthropic_model
+                getattr(active_settings, "anthropic_economy_model", "")
+                or getattr(active_settings, "anthropic_profile_model", "")
+                or active_settings.anthropic_model
             )
         if tier == "strong":
-            return getattr(settings, "anthropic_strong_model", "") or settings.anthropic_model
-        return settings.anthropic_model
+            return (
+                getattr(active_settings, "anthropic_strong_model", "")
+                or active_settings.anthropic_model
+            )
+        return active_settings.anthropic_model
 
     raise ValueError(f"Unsupported LLM provider '{provider}'.")
 
