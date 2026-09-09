@@ -3,6 +3,7 @@ python-dotenv
 pydantic
 pypdf
 python-docx
+requests
 
 langchain
 langgraph
