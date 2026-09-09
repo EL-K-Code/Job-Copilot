@@ -11,7 +11,13 @@ from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from app.config import settings
-from app.tenancy import ensure_user_directories
+from app.services.persistence import (
+    PersistenceBackendError,
+    consume_usage,
+    load_usage,
+    using_supabase,
+)
+from app.tenancy import ensure_user_directories, normalize_user_id
 
 
 _USAGE_LOCK = Lock()
@@ -103,6 +109,18 @@ def _atomic_write(path: Path, payload: dict[str, Any]) -> None:
             temporary_path.unlink(missing_ok=True)
 
 
+def _snapshot(user_id: str, payload: dict[str, Any], limit: int) -> UsageSnapshot:
+    used = int(payload.get("used", 0))
+    return UsageSnapshot(
+        user_id=normalize_user_id(user_id),
+        day=str(payload.get("day", "")),
+        used=used,
+        limit=limit,
+        remaining=max(limit - used, 0),
+        operations=dict(payload.get("operations") or {}),
+    )
+
+
 def get_daily_usage(
     user_id: str,
     *,
@@ -115,19 +133,15 @@ def get_daily_usage(
     if effective_limit < 1:
         raise ValueError("Daily AI limit must be at least 1.")
 
-    paths = ensure_user_directories(user_id)
+    normalized = normalize_user_id(user_id)
+    if using_supabase():
+        payload = load_usage(normalized, effective_day)
+        return _snapshot(normalized, payload, effective_limit)
+
+    paths = ensure_user_directories(normalized)
     with _USAGE_LOCK:
         payload = _load_payload(paths.usage, effective_day)
-
-    used = int(payload["used"])
-    return UsageSnapshot(
-        user_id=paths.user_id,
-        day=effective_day,
-        used=used,
-        limit=effective_limit,
-        remaining=max(effective_limit - used, 0),
-        operations=dict(payload["operations"]),
-    )
+    return _snapshot(normalized, payload, effective_limit)
 
 
 def consume_ai_operation(
@@ -139,8 +153,8 @@ def consume_ai_operation(
 ) -> UsageSnapshot:
     """Atomically reserve one paid AI operation before the provider call starts.
 
-    A started operation counts even if the downstream provider later fails. This keeps the
-    quota conservative and prevents repeated failing retries from creating unbounded cost.
+    In Supabase mode the reservation runs inside one Postgres transaction through an RPC,
+    so concurrent Streamlit sessions cannot race past the same daily limit.
     """
     normalized_operation = "_".join(str(operation).strip().casefold().split())
     if not normalized_operation:
@@ -151,7 +165,26 @@ def consume_ai_operation(
     if effective_limit < 1:
         raise ValueError("Daily AI limit must be at least 1.")
 
-    paths = ensure_user_directories(user_id)
+    normalized = normalize_user_id(user_id)
+    if using_supabase():
+        try:
+            payload = consume_usage(
+                normalized,
+                effective_day,
+                normalized_operation,
+                effective_limit,
+            )
+        except PersistenceBackendError as exc:
+            if "quota_exceeded" in str(exc).casefold():
+                current = load_usage(normalized, effective_day)
+                used = int(current.get("used", effective_limit))
+                raise UsageQuotaExceeded(
+                    f"Daily AI quota reached ({used}/{effective_limit}). Try again tomorrow."
+                ) from None
+            raise
+        return _snapshot(normalized, payload, effective_limit)
+
+    paths = ensure_user_directories(normalized)
     with _USAGE_LOCK:
         payload = _load_payload(paths.usage, effective_day)
         used = int(payload["used"])
@@ -169,12 +202,4 @@ def consume_ai_operation(
             "operations": operations,
         }
         _atomic_write(paths.usage, updated)
-
-    return UsageSnapshot(
-        user_id=paths.user_id,
-        day=effective_day,
-        used=used,
-        limit=effective_limit,
-        remaining=max(effective_limit - used, 0),
-        operations=operations,
-    )
+    return _snapshot(normalized, updated, effective_limit)
