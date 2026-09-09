@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from app.ui.application_pack_panel import retrieval_trace_label
 from app.ui.application_workspace import (
     JOB_PLACEHOLDER,
     evidence_records_for_claim,
@@ -44,6 +45,22 @@ def test_telemetry_badges_report_actual_provider_and_grounding_count():
     assert badges["model"] == "gpt-4.1-mini"
     assert badges["grounding_label"] == "2 grounded claims"
     assert badges["fallback_used"] is False
+
+
+def test_retrieval_trace_exposes_hybrid_and_reranker_provenance():
+    label = retrieval_trace_label(
+        {
+            "retrieval_strategy": "hybrid_rrf_cross_encoder",
+            "retrieval_final_rank": 1,
+            "retrieval_dense_rank": 3,
+            "retrieval_sparse_rank": 1,
+            "retrieval_fusion_rank": 2,
+        }
+    )
+
+    assert label == (
+        "Hybrid retrieval + cross-encoder · final #1 · dense #3 · BM25 #1 · RRF #2"
+    )
 
 
 def test_project_streamlit_configuration_keeps_cv_limit_and_minimal_toolbar():
