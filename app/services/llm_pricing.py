@@ -67,7 +67,8 @@ def estimate_call_cost_usd(
 ) -> float | None:
     if not isinstance(input_tokens, int) or not isinstance(output_tokens, int):
         return None
-    rates = (catalog or load_pricing_catalog()).get(pricing_key(provider, model))
+    active_catalog = catalog if catalog is not None else load_pricing_catalog()
+    rates = active_catalog.get(pricing_key(provider, model))
     if rates is None:
         return None
     return (
