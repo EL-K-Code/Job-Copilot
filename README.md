@@ -9,6 +9,7 @@ JobCopilot turns a raw job description into a structured, reviewable application
 ![Python](https://img.shields.io/badge/Python-3.11+-3776AB?logo=python&logoColor=white)
 ![LangGraph](https://img.shields.io/badge/LangGraph-Agent%20Orchestration-1C3C3C)
 ![Streamlit](https://img.shields.io/badge/Streamlit-Private%20Beta-FF4B4B?logo=streamlit&logoColor=white)
+![Supabase](https://img.shields.io/badge/Supabase-Durable%20Persistence-3ECF8E?logo=supabase&logoColor=white)
 ![CI](https://github.com/EL-K-Code/Job-Copilot/actions/workflows/ci.yml/badge.svg)
 ![Status](https://img.shields.io/badge/Status-Private%20Beta-315EFB)
 
@@ -56,10 +57,12 @@ JobCopilot is deliberately not a mass-application bot. It prefers a shorter, hon
 | Signature | Authenticated display name, or configured local candidate name |
 | Provider resilience | OpenAI primary with optional Anthropic runtime fallback |
 | Provider telemetry | Provider, model, operation, status, latency and available usage metadata |
-| Application tracking | Tenant-scoped JSON tracker with status, notes and reminders |
+| Application tracking | Tenant-scoped tracker state |
 | Gmail and Calendar | Per-user OAuth token and explicit human confirmation gates |
 | Agent Chat | Per-user graph, tool set, thread namespace and in-memory checkpoint |
 | Cost control | Configurable daily AI-operation quota per user |
+| Durable hosted state | Supabase-backed profiles, tracker state, beta accounts and atomic quotas |
+| Local fallback | Filesystem persistence remains available for local development |
 | Evaluation | Extraction, retrieval and claim-level grounding workflows |
 | Delivery | Premium Streamlit UI, Dockerfile and GitHub Actions CI |
 
@@ -85,9 +88,26 @@ Examples of disallowed amplification include turning:
 
 ---
 
-## Private beta isolation
+## Private beta isolation and persistence
 
-Each authenticated user receives a private workspace:
+JobCopilot supports two persistence modes.
+
+### Hosted private beta — Supabase
+
+For Streamlit Community Cloud, the supported backend is Supabase:
+
+- `jobcopilot_state` stores tenant-scoped verified profile memories, tracker state and private-beta account data;
+- `jobcopilot_usage` stores durable daily AI usage;
+- `jobcopilot_consume_quota(...)` performs atomic quota consumption so concurrent sessions cannot race past a user's daily limit;
+- Row Level Security is enabled and the application accesses these tables only from trusted server-side code using a Supabase server secret.
+
+FAISS indexes remain disposable: they are rebuilt from the user's verified persistent profile after a restart.
+
+Raw uploaded CV files are not persisted by JobCopilot.
+
+### Local development — filesystem fallback
+
+Without Supabase, local development can still use isolated user directories such as:
 
 ```text
 data/users/<user_id>/
@@ -100,8 +120,6 @@ data/users/<user_id>/
 ```
 
 The user ID is normalized and validated before any path is resolved. Agent tools receive the authenticated user through Python closures; the model cannot submit or modify a `user_id` tool argument.
-
-The filesystem backend is suitable for a controlled engineering beta. Public production deployment still requires durable database storage, managed authentication, encrypted persistent chat history, rate limiting and managed secrets.
 
 ---
 
@@ -146,7 +164,9 @@ Configure the daily limit:
 BETA_DAILY_AI_LIMIT=10
 ```
 
-Usage is stored separately for each user and resets on the next calendar day. A started provider action counts even when the downstream call fails, which prevents repeated failing retries from creating unbounded cost.
+With Supabase enabled, quota usage is durable and consumed atomically per user and calendar day. With the local filesystem backend, usage remains isolated per user for local development.
+
+A started provider action counts even when the downstream call fails, which prevents repeated failing retries from creating unbounded cost.
 
 ---
 
@@ -208,17 +228,19 @@ Enable authentication in `.env`:
 
 ```env
 BETA_AUTH_ENABLED=true
-BETA_USERS_FILE=data/beta_users.json
-USER_DATA_ROOT=data/users
 ```
 
-Create a user:
+For the Supabase backend, create a tester account with:
 
 ```bash
-python scripts/manage_beta_user.py alex --display-name "Alex"
+python scripts/create_beta_user.py recruiter-demo --display-name "Recruiter Demo"
 ```
 
-The command stores only a salted PBKDF2 password hash. The account display name is used automatically in generated email signatures.
+For the local filesystem backend, the local account-management workflow remains available.
+
+Passwords are never stored in plaintext; only salted PBKDF2 hashes are persisted.
+
+Create a separate account for each tester rather than sharing one login. This keeps profile state, tracker state and quota usage isolated.
 
 ---
 
@@ -237,6 +259,44 @@ Image-only scanned PDFs are not processed with OCR in the current version.
 
 ---
 
+## Hosted private-beta deployment
+
+The supported hosted path is **Streamlit Community Cloud + Supabase**.
+
+Create the Streamlit app from:
+
+```text
+Repository: EL-K-Code/Job-Copilot
+Branch:     main
+Main file:  app/ui/private_beta_app.py
+```
+
+Configure root-level Streamlit secrets in TOML:
+
+```toml
+PERSISTENCE_BACKEND = "supabase"
+SUPABASE_URL = "https://YOUR_PROJECT.supabase.co"
+SUPABASE_SECRET_KEY = "sb_secret_..."
+OPENAI_API_KEY = "..."
+OPENAI_MODEL = "gpt-4.1-mini"
+OPENAI_PROFILE_MODEL = "gpt-4.1-nano"
+BETA_AUTH_ENABLED = "true"
+BETA_DAILY_AI_LIMIT = "5"
+DEFAULT_TIMEZONE = "Europe/Paris"
+```
+
+Before sharing a recruiter-facing URL, verify:
+
+1. profile persistence across logout/login;
+2. tracker persistence;
+3. quota enforcement;
+4. application behavior after a Streamlit restart;
+5. dedicated credentials for each external tester.
+
+See [`docs/STREAMLIT_SUPABASE_DEPLOYMENT.md`](docs/STREAMLIT_SUPABASE_DEPLOYMENT.md) for the full deployment procedure.
+
+---
+
 ## Google OAuth
 
 To enable Gmail and Calendar locally:
@@ -248,7 +308,9 @@ To enable Gmail and Calendar locally:
 5. save the downloaded file as `credentials.json` at the repository root;
 6. connect Google from the Settings page.
 
-OAuth credentials and generated tokens are ignored by Git. Each beta user receives a separate token file.
+OAuth credentials and generated tokens are ignored by Git. Each beta user receives a separate token file locally.
+
+Google OAuth tokens are intentionally not migrated to Supabase in the current hosted-beta architecture. Gmail and Calendar should remain disabled in the hosted recruiter demo until a secure persistent token-storage design is added.
 
 ---
 
@@ -342,10 +404,12 @@ app/
   services/
   tools/
   ui/
-
 data/
+docs/
 evaluation/
 scripts/
+supabase/
+  schema.sql
 tests/
 .github/workflows/
 .streamlit/
@@ -358,11 +422,11 @@ SECURITY.md
 
 ## Current boundaries
 
-- Profile, tracker, usage and OAuth persistence are filesystem-backed.
 - Agent Chat history is process-local and disappears after restart.
+- Google OAuth tokens are not persisted in Supabase; hosted Gmail/Calendar integration is therefore intentionally disabled until secure token persistence is added.
 - Uploaded image-only PDFs are not OCR-processed.
 - Token counts depend on provider response metadata and may be unavailable.
 - French application quality still needs broader end-to-end testing.
-- Public deployment requires managed identity, durable storage, rate limiting and secure secret management.
+- The hosted path is a controlled private beta, not a fully managed public multi-tenant SaaS deployment.
 
-See [`PRIVATE_BETA.md`](PRIVATE_BETA.md) and [`SECURITY.md`](SECURITY.md) for operational and trust boundaries.
+See [`PRIVATE_BETA.md`](PRIVATE_BETA.md), [`SECURITY.md`](SECURITY.md) and [`docs/STREAMLIT_SUPABASE_DEPLOYMENT.md`](docs/STREAMLIT_SUPABASE_DEPLOYMENT.md) for operational and trust boundaries.
