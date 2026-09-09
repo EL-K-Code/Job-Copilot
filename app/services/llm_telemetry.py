@@ -210,6 +210,20 @@ def summarize_llm_events(events: list[LLMCallEvent] | list[dict[str, Any]]) -> d
         )
     )
     final_success = successes[-1] if successes else None
+    first_attempt = normalized[0] if normalized else None
+    first_provider = str(first_attempt.get("provider")) if first_attempt else None
+    first_model = str(first_attempt.get("model")) if first_attempt else None
+    provider_fallback_used = bool(
+        first_provider
+        and final_success
+        and str(final_success.get("provider")) != first_provider
+    )
+    model_fallback_used = bool(
+        first_model
+        and final_success
+        and str(final_success.get("model")) != first_model
+    )
+    recovery_after_error = bool(failures and successes)
     success_durations = [
         int(event.get("duration_ms", 0) or 0)
         for event in successes
@@ -290,7 +304,11 @@ def summarize_llm_events(events: list[LLMCallEvent] | list[dict[str, Any]]) -> d
         "final_provider": final_success.get("provider") if final_success else None,
         "final_model": final_success.get("model") if final_success else None,
         "final_routing_tier": final_success.get("routing_tier") if final_success else None,
-        "fallback_used": bool(failures and successes),
+        # Backward-compatible field now has the precise provider-fallback meaning used by the UI.
+        "fallback_used": provider_fallback_used,
+        "provider_fallback_used": provider_fallback_used,
+        "model_fallback_used": model_fallback_used,
+        "recovery_after_error": recovery_after_error,
         "total_duration_ms": total_duration_ms,
         "mean_success_latency_ms": (
             sum(success_durations) / len(success_durations)
