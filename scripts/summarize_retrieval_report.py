@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 
-CORE_METRICS = (
+QUALITY_METRICS = (
     "mrr",
     "recall@1",
     "recall@3",
@@ -15,6 +15,12 @@ CORE_METRICS = (
     "ndcg@3",
     "ndcg@5",
 )
+LATENCY_METRICS = (
+    "mean_latency_ms",
+    "p50_latency_ms",
+    "p95_latency_ms",
+)
+PUBLISHED_METRICS = (*QUALITY_METRICS, *LATENCY_METRICS)
 
 
 def build_summary(report: dict[str, Any]) -> dict[str, Any]:
@@ -27,14 +33,15 @@ def build_summary(report: dict[str, Any]) -> dict[str, Any]:
         aggregate = payload.get("aggregate", {}) if isinstance(payload, dict) else {}
         aggregates[str(strategy)] = {
             metric: float(aggregate.get(metric, 0.0))
-            for metric in CORE_METRICS
+            for metric in PUBLISHED_METRICS
         }
 
     best_by_metric: dict[str, str] = {}
     ties_by_metric: dict[str, list[str]] = {}
     strategy_order = list(aggregates)
-    for metric in CORE_METRICS:
-        best_value = max(aggregates[name][metric] for name in strategy_order)
+    for metric in PUBLISHED_METRICS:
+        values = [aggregates[name][metric] for name in strategy_order]
+        best_value = min(values) if metric in LATENCY_METRICS else max(values)
         tied = [name for name in strategy_order if aggregates[name][metric] == best_value]
         best_by_metric[metric] = tied[0]
         if len(tied) > 1:
@@ -48,7 +55,7 @@ def build_summary(report: dict[str, Any]) -> dict[str, Any]:
                 continue
             delta_vs_dense[strategy] = {
                 metric: metrics[metric] - dense[metric]
-                for metric in CORE_METRICS
+                for metric in PUBLISHED_METRICS
             }
 
     return {
@@ -57,12 +64,14 @@ def build_summary(report: dict[str, Any]) -> dict[str, Any]:
         "dataset": "evaluation/retrieval_cases.v1.jsonl",
         "number_of_cases": int(report.get("number_of_cases", 0)),
         "k": int(report.get("k", 5)),
+        "latency_scope": str(report.get("latency_scope", "unknown")),
         "strategies": aggregates,
         "best_by_metric": best_by_metric,
         "ties_by_metric": ties_by_metric,
         "delta_vs_dense": delta_vs_dense,
         "interpretation": (
-            "Ranking quality on labeled synthetic profile-memory queries; not recruiter outcomes."
+            "Ranking quality and warm-process retrieval latency on labeled synthetic "
+            "profile-memory queries; not recruiter outcomes."
         ),
     }
 
