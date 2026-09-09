@@ -68,6 +68,18 @@ class Settings:
     beta_daily_ai_limit: int = _env_int("BETA_DAILY_AI_LIMIT", 10, minimum=1)
     local_candidate_name: str = os.getenv("LOCAL_CANDIDATE_NAME", "").strip()
 
+    # Deployment persistence. Prefer Supabase's current sb_secret_* server key.
+    # SUPABASE_SERVICE_ROLE_KEY remains supported for legacy projects until migration.
+    persistence_backend: str = os.getenv("PERSISTENCE_BACKEND", "auto")
+    supabase_url: str = os.getenv("SUPABASE_URL", "").strip()
+    supabase_secret_key: str = os.getenv(
+        "SUPABASE_SECRET_KEY",
+        os.getenv("SUPABASE_SERVICE_ROLE_KEY", ""),
+    ).strip()
+    supabase_timeout_seconds: int = _env_int(
+        "SUPABASE_TIMEOUT_SECONDS", 12, minimum=1
+    )
+
     default_timezone: str = os.getenv("DEFAULT_TIMEZONE", "Europe/Paris")
     allow_trusted_faiss_deserialization: bool = _env_flag(
         "ALLOW_TRUSTED_FAISS_DESERIALIZATION",

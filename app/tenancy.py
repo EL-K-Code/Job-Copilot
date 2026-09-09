@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -57,8 +58,23 @@ def get_user_paths(user_id: str | None) -> UserPaths:
 
 
 def ensure_user_directories(user_id: str | None) -> UserPaths:
-    """Create only the private directories required for an authenticated user."""
+    """Create disposable tenant-local directories and hydrate profile presence when needed."""
     paths = get_user_paths(user_id)
     paths.root.mkdir(parents=True, exist_ok=True)
     paths.uploads.mkdir(parents=True, exist_ok=True)
+
+    # Some UI code checks whether the local profile mirror exists before loading it.
+    # On Streamlit Cloud the filesystem is disposable, so recreate only that small
+    # mirror from durable Supabase state after a restart. The source of truth remains
+    # the database; FAISS indexes are intentionally rebuilt process-locally.
+    from app.services.persistence import load_state, using_supabase
+
+    if using_supabase() and not paths.profile_memories.exists():
+        payload = load_state(paths.user_id, "profile_memories", [])
+        if isinstance(payload, list) and payload:
+            paths.profile_memories.write_text(
+                json.dumps(payload, indent=2, ensure_ascii=False),
+                encoding="utf-8",
+            )
+
     return paths
