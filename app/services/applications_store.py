@@ -8,7 +8,11 @@ from tempfile import NamedTemporaryFile
 
 from app.config import settings
 from app.schemas import ApplicationRecord
-from app.tenancy import get_user_paths
+from app.services.persistence import load_state, save_state, using_supabase
+from app.tenancy import get_user_paths, normalize_user_id
+
+
+_APPLICATIONS_NAMESPACE = "applications"
 
 
 def _normalize_text(value: str) -> str:
@@ -26,7 +30,7 @@ def _applications_path(user_id: str | None = None) -> Path:
     return settings.applications_path if user_id is None else get_user_paths(user_id).applications
 
 
-def load_application_records(user_id: str | None = None) -> list[ApplicationRecord]:
+def _load_local_application_records(user_id: str | None = None) -> list[ApplicationRecord]:
     path = _applications_path(user_id)
 
     if not path.exists():
@@ -48,6 +52,16 @@ def load_application_records(user_id: str | None = None) -> list[ApplicationReco
         raise ValueError("applications.json must contain a list.")
 
     return [ApplicationRecord(**item) for item in raw_data]
+
+
+def load_application_records(user_id: str | None = None) -> list[ApplicationRecord]:
+    if user_id is not None and using_supabase():
+        normalized = normalize_user_id(user_id)
+        raw_data = load_state(normalized, _APPLICATIONS_NAMESPACE, [])
+        if not isinstance(raw_data, list):
+            raise ValueError("Persistent application state must contain a list.")
+        return [ApplicationRecord(**item) for item in raw_data]
+    return _load_local_application_records(user_id)
 
 
 def _atomic_json_write(path: Path, payload: list[dict]) -> None:
@@ -84,10 +98,11 @@ def save_application_records(
     records: list[ApplicationRecord],
     user_id: str | None = None,
 ) -> None:
-    _atomic_json_write(
-        _applications_path(user_id),
-        [record.model_dump() for record in records],
-    )
+    payload = [record.model_dump() for record in records]
+    if user_id is not None and using_supabase():
+        save_state(normalize_user_id(user_id), _APPLICATIONS_NAMESPACE, payload)
+        return
+    _atomic_json_write(_applications_path(user_id), payload)
 
 
 def find_existing_application(
