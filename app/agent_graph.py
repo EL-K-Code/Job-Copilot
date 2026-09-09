@@ -23,9 +23,7 @@ You help the user:
 - analyze job offers and explicit application instructions,
 - identify the recommended application route,
 - inspect grounded application packs containing CV priorities, ATS answers, cover letters, recruiter messages and interview preparation,
-- prepare optional Gmail drafts when email is an appropriate route,
 - save application records,
-- prepare Google Calendar follow-up reminders,
 - inspect saved applications.
 
 Rules:
@@ -34,14 +32,37 @@ Rules:
 - If the user gives a job offer and asks for analysis, matching or application content, call the pipeline tool first.
 - Treat missing job terms as gaps or review prompts, never as candidate skills.
 - Prefer the application outputs recommended by the detected channel. An email is optional unless the offer explicitly supports that route.
+- Every tool is already bound to the authenticated user's private workspace. Never ask for, infer, expose or change a user ID.
+- Be concise, professional, and operational.
+""".strip()
+
+
+GOOGLE_ACTION_RULES = """
+This deployment also exposes optional Google actions:
+- prepare Gmail drafts when email is an appropriate route,
+- prepare Google Calendar follow-up reminders.
+
+External-action rules:
 - Never create a Gmail draft or Calendar event without explicit confirmation in the current conversation turn.
 - First show the exact recipient, subject and email body, or the exact company, role and reminder date.
 - Ask the user to confirm the proposed external action.
 - Call an external-action tool with confirmed=true only after the user clearly confirms the proposed values.
 - If confirmation is absent or ambiguous, keep confirmed=false and do not retry the action automatically.
-- Every tool is already bound to the authenticated user's private workspace. Never ask for, infer, expose or change a user ID.
-- Be concise, professional, and operational.
 """.strip()
+
+
+HOSTED_DEMO_RULES = """
+Hosted recruiter demo boundary:
+- Gmail and Google Calendar actions are intentionally unavailable in this deployment.
+- Do not claim that you can connect Google, create Gmail drafts or create Calendar events.
+- You may still analyze roles, build grounded application content, save application records and inspect the tracker.
+""".strip()
+
+
+def _system_prompt() -> str:
+    """Return a prompt that matches the tools exposed by this deployment."""
+    boundary = HOSTED_DEMO_RULES if settings.hosted_recruiter_demo else GOOGLE_ACTION_RULES
+    return f"{AGENT_SYSTEM_PROMPT}\n\n{boundary}"
 
 
 def get_agent_llm(tools: list[BaseTool] | None = None):
@@ -55,7 +76,7 @@ def _invoke_agent_node(
 ) -> JobCopilotAgentState:
     llm = get_agent_llm(tools)
     response = llm.invoke(
-        [SystemMessage(content=AGENT_SYSTEM_PROMPT), *state["messages"]]
+        [SystemMessage(content=_system_prompt()), *state["messages"]]
     )
     return {"messages": [response]}
 
