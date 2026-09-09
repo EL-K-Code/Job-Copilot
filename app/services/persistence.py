@@ -16,6 +16,13 @@ class PersistenceBackendError(RuntimeError):
     """Raised when the configured persistent backend cannot complete an operation."""
 
 
+def _server_key() -> str:
+    """Return the configured current or legacy elevated Supabase server key."""
+    current = str(getattr(settings, "supabase_secret_key", "")).strip()
+    legacy = str(getattr(settings, "supabase_service_role_key", "")).strip()
+    return current or legacy
+
+
 def using_supabase() -> bool:
     """Return whether tenant state should be stored in Supabase."""
     backend = settings.persistence_backend.strip().casefold()
@@ -26,12 +33,11 @@ def using_supabase() -> bool:
     if backend == "local":
         return False
 
-    configured = bool(
-        settings.supabase_url.strip() and settings.supabase_service_role_key.strip()
-    )
+    configured = bool(settings.supabase_url.strip() and _server_key())
     if backend == "supabase" and not configured:
         raise PersistenceConfigurationError(
-            "Supabase persistence requires SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY."
+            "Supabase persistence requires SUPABASE_URL and SUPABASE_SECRET_KEY "
+            "(or legacy SUPABASE_SERVICE_ROLE_KEY)."
         )
     return configured
 
@@ -41,12 +47,18 @@ def _base_url() -> str:
 
 
 def _headers(*, prefer: str | None = None) -> dict[str, str]:
-    key = settings.supabase_service_role_key.strip()
+    """Build Data API headers compatible with current and legacy Supabase keys.
+
+    Current `sb_secret_*` keys are opaque API keys and must not be sent as Bearer
+    tokens. Legacy service-role keys are JWTs and retain their historical Bearer header.
+    """
+    key = _server_key()
     headers = {
         "apikey": key,
-        "Authorization": f"Bearer {key}",
         "Content-Type": "application/json",
     }
+    if not key.startswith("sb_secret_"):
+        headers["Authorization"] = f"Bearer {key}"
     if prefer:
         headers["Prefer"] = prefer
     return headers
@@ -196,21 +208,16 @@ def consume_usage(
         raise PersistenceConfigurationError(
             "consume_usage is only available when Supabase persistence is enabled."
         )
-    try:
-        response = _request(
-            "POST",
-            "/rest/v1/rpc/jobcopilot_consume_quota",
-            json_payload={
-                "p_user_id": user_id,
-                "p_day": day,
-                "p_operation": operation,
-                "p_limit": limit,
-            },
-        )
-    except PersistenceBackendError as exc:
-        if "quota_exceeded" in str(exc).casefold():
-            raise
-        raise
+    response = _request(
+        "POST",
+        "/rest/v1/rpc/jobcopilot_consume_quota",
+        json_payload={
+            "p_user_id": user_id,
+            "p_day": day,
+            "p_operation": operation,
+            "p_limit": limit,
+        },
+    )
 
     payload = response.json()
     if isinstance(payload, list) and payload:
