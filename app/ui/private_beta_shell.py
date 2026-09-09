@@ -12,10 +12,12 @@ from app.ui import hosted_google_mode
 from app.ui import hosted_google_oauth
 from app.ui import hosted_recruiter_demo as hosted
 from app.ui import premium_private_beta as premium
+from app.ui.application_workflow_panel import render_application_workflow_panel
 from app.ui.application_workspace import render_application_workspace
 from app.ui.evaluation_dashboard import render_evaluation_dashboard
 from app.ui.premium_polish import inject_premium_polish
 from app.ui.profile_workspace import render_profile_gate, render_profile_page
+from app.ui.workflow_tracker import render_workflow_tracker
 
 
 NAV_ITEMS = [
@@ -157,6 +159,7 @@ def main() -> None:
             hosted.render_application_workspace(user)
         else:
             render_application_workspace(user)
+        render_application_workflow_panel(user)
     elif page == "AI Evaluation":
         render_evaluation_dashboard(user)
     elif page == "Agent Chat":
@@ -165,7 +168,7 @@ def main() -> None:
         else:
             premium._render_agent_chat(user_id)
     elif page == "Applications":
-        premium._render_applications(user_id)
+        render_workflow_tracker(user_id)
     else:
         if settings.hosted_recruiter_demo and settings.hosted_google_oauth_enabled:
             hosted_google_mode.render_settings(user_id)
