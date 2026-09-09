@@ -1,0 +1,86 @@
+{
+  "schema_version": 1,
+  "benchmark_type": "synthetic_engineering_regression",
+  "dataset": "evaluation/retrieval_cases.v1.jsonl",
+  "number_of_cases": 20,
+  "k": 5,
+  "latency_scope": "warm_process",
+  "strategies": {
+    "dense": {
+      "mrr": 1.0,
+      "recall@1": 0.825,
+      "recall@3": 0.975,
+      "recall@5": 0.975,
+      "ndcg@1": 1.0,
+      "ndcg@3": 0.9766433990956823,
+      "ndcg@5": 0.9766433990956823,
+      "mean_latency_ms": 11.102042250000466,
+      "p50_latency_ms": 11.085249500013106,
+      "p95_latency_ms": 11.539575999989893
+    },
+    "hybrid": {
+      "mrr": 0.975,
+      "recall@1": 0.8,
+      "recall@3": 0.975,
+      "recall@5": 0.975,
+      "ndcg@1": 0.95,
+      "ndcg@3": 0.9613147192765459,
+      "ndcg@5": 0.9613147192765459,
+      "mean_latency_ms": 11.9602996999987,
+      "p50_latency_ms": 12.024569999994128,
+      "p95_latency_ms": 12.336750000002894
+    },
+    "hybrid_rerank": {
+      "mrr": 0.975,
+      "recall@1": 0.775,
+      "recall@3": 1.0,
+      "recall@5": 1.0,
+      "ndcg@1": 0.95,
+      "ndcg@3": 0.9654906455082104,
+      "ndcg@5": 0.9654906455082104,
+      "mean_latency_ms": 75.0256097000019,
+      "p50_latency_ms": 74.99126749999618,
+      "p95_latency_ms": 79.78096700000492
+    }
+  },
+  "best_by_metric": {
+    "mrr": "dense",
+    "recall@1": "dense",
+    "recall@3": "hybrid_rerank",
+    "recall@5": "hybrid_rerank",
+    "ndcg@1": "dense",
+    "ndcg@3": "dense",
+    "ndcg@5": "dense",
+    "mean_latency_ms": "dense",
+    "p50_latency_ms": "dense",
+    "p95_latency_ms": "dense"
+  },
+  "ties_by_metric": {},
+  "delta_vs_dense": {
+    "hybrid": {
+      "mrr": -0.025000000000000022,
+      "recall@1": -0.02499999999999991,
+      "recall@3": 0.0,
+      "recall@5": 0.0,
+      "ndcg@1": -0.050000000000000044,
+      "ndcg@3": -0.015328679819136437,
+      "ndcg@5": -0.015328679819136437,
+      "mean_latency_ms": 0.8582574499982343,
+      "p50_latency_ms": 0.9393204999810223,
+      "p95_latency_ms": 0.7971740000130012
+    },
+    "hybrid_rerank": {
+      "mrr": -0.025000000000000022,
+      "recall@1": -0.04999999999999993,
+      "recall@3": 0.025000000000000022,
+      "recall@5": 0.025000000000000022,
+      "ndcg@1": -0.050000000000000044,
+      "ndcg@3": -0.01115275358747192,
+      "ndcg@5": -0.01115275358747192,
+      "mean_latency_ms": 63.92356745000143,
+      "p50_latency_ms": 63.90601799998308,
+      "p95_latency_ms": 68.24139100001503
+    }
+  },
+  "interpretation": "Ranking quality and warm-process retrieval latency on labeled synthetic profile-memory queries; not recruiter outcomes."
+}
