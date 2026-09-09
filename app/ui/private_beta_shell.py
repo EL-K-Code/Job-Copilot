@@ -8,6 +8,8 @@ from app.services.usage_quota import get_daily_usage
 from app.tenancy import DEFAULT_LOCAL_USER_ID, ensure_user_directories
 from app.tools.gmail_tools import google_token_exists
 from app.ui import hosted_auth
+from app.ui import hosted_google_mode
+from app.ui import hosted_google_oauth
 from app.ui import hosted_recruiter_demo as hosted
 from app.ui import premium_private_beta as premium
 from app.ui.application_workspace import render_application_workspace
@@ -70,7 +72,13 @@ def _render_sidebar(user: dict[str, str]) -> str:
 
         if settings.hosted_recruiter_demo:
             st.success("Durable state · Supabase")
-            st.caption("External Google actions disabled")
+            if settings.hosted_google_oauth_enabled:
+                if google_token_exists(user["user_id"]):
+                    st.success("Google connected")
+                else:
+                    st.info("Google not connected")
+            else:
+                st.caption("External Google actions disabled")
         elif google_token_exists(user["user_id"]):
             st.success("Google connected")
         else:
@@ -113,6 +121,9 @@ def main() -> None:
     inject_premium_polish()
     _require_safe_hosted_configuration()
 
+    if settings.hosted_recruiter_demo and settings.hosted_google_oauth_enabled:
+        hosted_google_oauth.handle_google_oauth_callback()
+
     user = (
         hosted_auth.authenticated_user()
         if settings.hosted_recruiter_demo
@@ -131,26 +142,30 @@ def main() -> None:
 
     page = _render_sidebar(user)
     if page == "Overview":
-        if settings.hosted_recruiter_demo:
+        if settings.hosted_recruiter_demo and settings.hosted_google_oauth_enabled:
+            hosted_google_mode.render_overview(user)
+        elif settings.hosted_recruiter_demo:
             hosted.render_overview(user)
         else:
             premium._render_overview(user)
     elif page == "Profile":
         render_profile_page(user_id)
     elif page == "New application":
-        if settings.hosted_recruiter_demo:
+        if settings.hosted_recruiter_demo and not settings.hosted_google_oauth_enabled:
             hosted.render_application_workspace(user)
         else:
             render_application_workspace(user)
     elif page == "Agent Chat":
-        if settings.hosted_recruiter_demo:
+        if settings.hosted_recruiter_demo and not settings.hosted_google_oauth_enabled:
             hosted.render_agent_chat(user_id)
         else:
             premium._render_agent_chat(user_id)
     elif page == "Applications":
         premium._render_applications(user_id)
     else:
-        if settings.hosted_recruiter_demo:
+        if settings.hosted_recruiter_demo and settings.hosted_google_oauth_enabled:
+            hosted_google_mode.render_settings(user_id)
+        elif settings.hosted_recruiter_demo:
             hosted.render_settings(user_id)
         else:
             premium._render_settings(user_id)
