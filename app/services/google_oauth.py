@@ -169,23 +169,35 @@ def build_google_authorization_url(user_id: str) -> str:
     return authorization_url
 
 
+def _expiry_to_text(expiry: datetime | None) -> str:
+    if expiry is None:
+        return ""
+    if expiry.tzinfo is None:
+        expiry = expiry.replace(tzinfo=timezone.utc)
+    else:
+        expiry = expiry.astimezone(timezone.utc)
+    return expiry.isoformat()
+
+
+def _expiry_from_text(raw_expiry: str) -> datetime | None:
+    if not raw_expiry:
+        return None
+    parsed = datetime.fromisoformat(raw_expiry)
+    if parsed.tzinfo is not None:
+        parsed = parsed.astimezone(timezone.utc).replace(tzinfo=None)
+    return parsed
+
+
 def _credentials_payload(credentials: Credentials) -> dict[str, Any]:
     return {
         "token": credentials.token or "",
         "refresh_token": credentials.refresh_token or "",
-        "expiry": credentials.expiry.astimezone(timezone.utc).isoformat()
-        if credentials.expiry
-        else "",
+        "expiry": _expiry_to_text(credentials.expiry),
         "scopes": list(credentials.scopes or GOOGLE_SCOPES),
     }
 
 
 def _credentials_from_payload(payload: dict[str, Any]) -> Credentials:
-    raw_expiry = str(payload.get("expiry", "")).strip()
-    expiry = datetime.fromisoformat(raw_expiry) if raw_expiry else None
-    if expiry is not None and expiry.tzinfo is None:
-        expiry = expiry.replace(tzinfo=timezone.utc)
-
     return Credentials(
         token=str(payload.get("token", "")) or None,
         refresh_token=str(payload.get("refresh_token", "")) or None,
@@ -193,7 +205,7 @@ def _credentials_from_payload(payload: dict[str, Any]) -> Credentials:
         client_id=settings.google_oauth_client_id,
         client_secret=settings.google_oauth_client_secret,
         scopes=list(payload.get("scopes") or GOOGLE_SCOPES),
-        expiry=expiry,
+        expiry=_expiry_from_text(str(payload.get("expiry", "")).strip()),
     )
 
 
