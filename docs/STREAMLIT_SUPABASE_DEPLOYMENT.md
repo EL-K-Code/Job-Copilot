@@ -20,7 +20,7 @@ The tables have Row Level Security enabled and no browser-facing `anon` / `authe
 
 ## 2. Configure local deployment secrets
 
-Never commit these values. Put them in `.env` locally or the Streamlit secret manager in the hosted app.
+Never commit these values. For local development, put them in `.env`:
 
 ```env
 PERSISTENCE_BACKEND=supabase
@@ -58,15 +58,21 @@ Create a new app from:
 - branch: `main`
 - entrypoint: `app/ui/private_beta_app.py`
 
-In **Advanced settings / Secrets**, add the same server-side values shown above. Do not add `.env`, `credentials.json`, OAuth tokens or `secrets.toml` to Git.
+In **Advanced settings / Secrets**, Streamlit expects TOML. Paste root-level secrets like this:
 
-Recommended recruiter-demo configuration:
-
-```env
-PERSISTENCE_BACKEND=supabase
-BETA_AUTH_ENABLED=true
-BETA_DAILY_AI_LIMIT=5
+```toml
+PERSISTENCE_BACKEND = "supabase"
+SUPABASE_URL = "https://YOUR_PROJECT.supabase.co"
+SUPABASE_SECRET_KEY = "sb_secret_..."
+OPENAI_API_KEY = "..."
+OPENAI_MODEL = "gpt-4.1-mini"
+OPENAI_PROFILE_MODEL = "gpt-4.1-nano"
+BETA_AUTH_ENABLED = "true"
+BETA_DAILY_AI_LIMIT = "5"
+DEFAULT_TIMEZONE = "Europe/Paris"
 ```
+
+Root-level Streamlit secrets are exposed to the app as environment variables, so JobCopilot's existing configuration loader can consume them. Do not add `.env`, `credentials.json`, OAuth tokens or `.streamlit/secrets.toml` to Git.
 
 A low recruiter/demo quota protects the OpenAI account from accidental or abusive usage.
 
@@ -86,6 +92,8 @@ Disposable / rebuilt on the Streamlit instance:
 - temporary CV upload bytes (source CV files are not persisted by JobCopilot).
 
 Google OAuth tokens are intentionally **not** migrated to Supabase by this deployment change. Gmail and Calendar remain optional and should only be enabled after a secure hosted token-storage design is configured. The core recruiter demo does not require them.
+
+Deleting a user's application/profile data removes their verified profile, tracker and quota ledger but deliberately preserves the private-beta login record so the same account can start over safely.
 
 ## 6. Recruiter sharing checklist
 
