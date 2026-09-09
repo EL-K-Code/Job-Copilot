@@ -94,6 +94,7 @@ def test_delete_user_state_preserves_beta_login_namespace(monkeypatch):
     assert state_deletes == [
         {"user_id": "eq.alice", "namespace": "eq.profile_memories"},
         {"user_id": "eq.alice", "namespace": "eq.applications"},
+        {"user_id": "eq.alice", "namespace": "eq.google_oauth"},
     ]
     assert all(params.get("namespace") != "eq.beta_user" for params in state_deletes)
 
