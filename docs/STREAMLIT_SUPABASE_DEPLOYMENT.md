@@ -16,7 +16,7 @@ The schema creates:
 - `jobcopilot_usage` for durable daily AI quotas;
 - `jobcopilot_consume_quota(...)`, an atomic Postgres function that prevents concurrent sessions from racing past a user's daily limit.
 
-The tables have Row Level Security enabled and no browser-facing `anon` / `authenticated` table grants. JobCopilot accesses them only from the Streamlit server using the service-role secret.
+The tables have Row Level Security enabled and no browser-facing `anon` / `authenticated` table grants. JobCopilot accesses them only from the trusted Streamlit server using an elevated Supabase server secret.
 
 ## 2. Configure local deployment secrets
 
@@ -25,7 +25,7 @@ Never commit these values. Put them in `.env` locally or the Streamlit secret ma
 ```env
 PERSISTENCE_BACKEND=supabase
 SUPABASE_URL=https://YOUR_PROJECT.supabase.co
-SUPABASE_SERVICE_ROLE_KEY=YOUR_SERVER_ONLY_SERVICE_ROLE_KEY
+SUPABASE_SECRET_KEY=sb_secret_...
 
 OPENAI_API_KEY=...
 OPENAI_MODEL=gpt-4.1-mini
@@ -36,7 +36,7 @@ BETA_DAILY_AI_LIMIT=10
 DEFAULT_TIMEZONE=Europe/Paris
 ```
 
-`SUPABASE_SERVICE_ROLE_KEY` is a server secret. Never expose it in frontend code, screenshots, GitHub files or browser JavaScript.
+Use the current Supabase **Secret key** (`sb_secret_...`) from the project's Connect / API Keys view. It is server-only and bypasses RLS, so never expose it in frontend code, screenshots, GitHub files or browser JavaScript. JobCopilot sends current secret keys only through the `apikey` header. Legacy JWT `SUPABASE_SERVICE_ROLE_KEY` remains supported as a migration fallback, but new deployments should use `SUPABASE_SECRET_KEY`.
 
 ## 3. Create a private beta account
 
@@ -60,7 +60,7 @@ Create a new app from:
 
 In **Advanced settings / Secrets**, add the same server-side values shown above. Do not add `.env`, `credentials.json`, OAuth tokens or `secrets.toml` to Git.
 
-Recommended public demo configuration:
+Recommended recruiter-demo configuration:
 
 ```env
 PERSISTENCE_BACKEND=supabase
@@ -92,7 +92,7 @@ Google OAuth tokens are intentionally **not** migrated to Supabase by this deplo
 Before sharing a live URL:
 
 1. Run `supabase/schema.sql` successfully.
-2. Set `PERSISTENCE_BACKEND=supabase` and the two Supabase secrets.
+2. Set `PERSISTENCE_BACKEND=supabase`, `SUPABASE_URL` and `SUPABASE_SECRET_KEY`.
 3. Keep `BETA_AUTH_ENABLED=true`.
 4. Create a dedicated recruiter/tester account.
 5. Keep `BETA_DAILY_AI_LIMIT` low (for example 5).
