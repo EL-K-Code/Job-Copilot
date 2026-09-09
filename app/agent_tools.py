@@ -19,7 +19,7 @@ from app.tools.calendar_tools import (
     build_followup_event_payload,
     create_followup_event,
 )
-from app.tools.gmail_tools import create_gmail_draft
+from app.tools.gmail_tools import create_gmail_draft, google_token_exists
 
 
 def _candidate_name_for_user(user_id: str | None) -> str:
@@ -111,6 +111,11 @@ def build_agent_tools(
                     "body": body,
                 },
             }
+        if bound_user_id is not None and not google_token_exists(bound_user_id):
+            return {
+                "status": "google_not_connected",
+                "message": "Connect Google in Settings before creating a Gmail draft.",
+            }
         result = create_gmail_draft(
             to=to,
             subject=subject,
@@ -144,6 +149,11 @@ def build_agent_tools(
                     "role": role,
                     "followup_date": followup_date,
                 },
+            }
+        if bound_user_id is not None and not google_token_exists(bound_user_id):
+            return {
+                "status": "google_not_connected",
+                "message": "Connect Google in Settings before creating a Calendar reminder.",
             }
 
         if has_existing_reminder(
