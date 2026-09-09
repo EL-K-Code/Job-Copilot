@@ -6,7 +6,7 @@ from typing import Any
 from langgraph.graph import START, END, StateGraph
 
 from app.application_pack import compose_application_pack
-from app.memory import retrieve_profile_context
+from app.retrieval import retrieve_profile_context
 from app.services.llm import (
     analyze_job_offer,
     generate_match_insight,
