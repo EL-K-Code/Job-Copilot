@@ -21,6 +21,19 @@ ApplicationOutput = Literal[
     "application_email",
     "interview_prep",
 ]
+ApplicationWorkflowStage = Literal[
+    "discovered",
+    "analyzed",
+    "ready_to_apply",
+    "awaiting_approval",
+    "applied",
+    "follow_up_due",
+    "interview",
+    "rejected",
+    "offer",
+    "closed",
+]
+ApplicationWorkflowActor = Literal["user", "agent", "system"]
 
 
 class JobAnalysis(BaseModel):
@@ -286,12 +299,42 @@ class ApplicationPack(BaseModel):
         return list(dict.fromkeys(str(item).strip() for item in value if str(item).strip()))
 
 
+class ApplicationWorkflowEvent(BaseModel):
+    event_type: str = Field(description="Machine-readable lifecycle or action event type.")
+    stage: ApplicationWorkflowStage = Field(description="Workflow stage after the event.")
+    actor: ApplicationWorkflowActor = Field(default="system")
+    occurred_at: str = Field(description="UTC ISO timestamp for the event.")
+    detail: str = Field(default="", description="Human-readable event detail without secrets.")
+    action_key: str = Field(
+        default="",
+        description="Optional deterministic idempotency key for external actions.",
+    )
+
+    @field_validator("event_type")
+    @classmethod
+    def validate_event_type(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("Workflow event_type cannot be empty.")
+        return normalized
+
+    @field_validator("occurred_at")
+    @classmethod
+    def validate_occurred_at(cls, value: str) -> str:
+        normalized = value.strip()
+        try:
+            datetime.fromisoformat(normalized)
+        except ValueError as exc:
+            raise ValueError("occurred_at must be a valid ISO datetime.") from exc
+        return normalized
+
+
 class ApplicationRecord(BaseModel):
     company: str = Field(description="Company name.")
     role: str = Field(description="Role or job title.")
     status: Literal["drafted", "applied", "interview", "follow_up", "closed"] = Field(
         default="drafted",
-        description="Current application status.",
+        description="Legacy tracker status kept for backward compatibility.",
     )
     source: str = Field(
         default="manual",
@@ -317,6 +360,33 @@ class ApplicationRecord(BaseModel):
         default="",
         description="Creation timestamp in ISO format.",
     )
+    application_id: str = Field(
+        default="",
+        description="Stable opaque identifier assigned to new workflow records.",
+    )
+    workflow_stage: ApplicationWorkflowStage | None = Field(
+        default=None,
+        description=(
+            "Agentic lifecycle stage. Older records may omit this field and are mapped "
+            "from the legacy tracker status at read time."
+        ),
+    )
+    application_channel: ApplicationChannel = Field(
+        default="unknown",
+        description="Application route extracted from the job offer.",
+    )
+    workflow_history: list[ApplicationWorkflowEvent] = Field(
+        default_factory=list,
+        description="Append-only human-readable lifecycle and external-action audit trail.",
+    )
+    external_action_keys: list[str] = Field(
+        default_factory=list,
+        description="Successful external-action idempotency keys; never contains OAuth credentials.",
+    )
+    updated_at: str = Field(
+        default="",
+        description="Last workflow mutation timestamp in ISO format.",
+    )
 
     @field_validator("company", "role", "source")
     @classmethod
@@ -325,6 +395,16 @@ class ApplicationRecord(BaseModel):
         if not normalized:
             raise ValueError("Required application text fields cannot be empty.")
         return normalized
+
+    @field_validator("application_id")
+    @classmethod
+    def normalize_application_id(cls, value: str) -> str:
+        return value.strip()
+
+    @field_validator("external_action_keys")
+    @classmethod
+    def normalize_action_keys(cls, value: list[str]) -> list[str]:
+        return list(dict.fromkeys(item.strip() for item in value if item.strip()))
 
     @field_validator("reminder_date")
     @classmethod
@@ -338,14 +418,14 @@ class ApplicationRecord(BaseModel):
             raise ValueError("reminder_date must use the YYYY-MM-DD format.") from exc
         return normalized
 
-    @field_validator("created_at")
+    @field_validator("created_at", "updated_at")
     @classmethod
-    def validate_created_at(cls, value: str) -> str:
+    def validate_iso_timestamp(cls, value: str) -> str:
         normalized = value.strip()
         if not normalized:
             return ""
         try:
             datetime.fromisoformat(normalized)
         except ValueError as exc:
-            raise ValueError("created_at must be a valid ISO datetime.") from exc
+            raise ValueError("Application timestamps must be valid ISO datetimes.") from exc
         return normalized
