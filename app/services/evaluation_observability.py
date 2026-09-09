@@ -9,7 +9,10 @@ from app.evaluation import normalize_evaluation_item
 from app.services.llm_telemetry import summarize_llm_events
 
 
-_PUBLISHED_RETRIEVAL_SUMMARY = Path("evaluation/published/retrieval_v2_summary.json")
+_PROJECT_ROOT = Path(__file__).resolve().parents[2]
+_PUBLISHED_RETRIEVAL_SUMMARY = (
+    _PROJECT_ROOT / "evaluation" / "published" / "retrieval_v2_summary.json"
+)
 _JOB_TERM_FIELDS = (
     "required_skills",
     "preferred_skills",
