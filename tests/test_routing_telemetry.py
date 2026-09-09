@@ -59,3 +59,29 @@ def test_summary_counts_strong_tier_quality_escalation():
     assert summary["escalation_attempts"] == 1
     assert summary["escalation_rate"] == 0.5
     assert summary["final_routing_tier"] == "strong"
+
+
+def test_same_provider_model_recovery_is_not_reported_as_provider_fallback():
+    events = [
+        {
+            "provider": "openai",
+            "model": "gpt-economy",
+            "operation": "JobAnalysis",
+            "status": "error",
+            "duration_ms": 25,
+            "routing_tier": "economy",
+        },
+        {
+            "provider": "openai",
+            "model": "gpt-standard",
+            "operation": "JobAnalysis",
+            "status": "success",
+            "duration_ms": 60,
+            "routing_tier": "standard",
+        },
+    ]
+    summary = summarize_llm_events(events)
+    assert summary["fallback_used"] is False
+    assert summary["provider_fallback_used"] is False
+    assert summary["model_fallback_used"] is True
+    assert summary["recovery_after_error"] is True
