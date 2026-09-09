@@ -135,7 +135,11 @@ def _tier_model_candidates(
     output: list[tuple[str, str]] = []
     seen_models: set[str] = set()
     for tier in stronger_tiers(decision.tier):
-        model_name = provider_model_for_tier(provider, tier)
+        model_name = provider_model_for_tier(
+            provider,
+            tier,
+            settings_obj=settings,
+        )
         if not model_name or model_name in seen_models:
             continue
         seen_models.add(model_name)
