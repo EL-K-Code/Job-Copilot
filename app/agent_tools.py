@@ -34,14 +34,21 @@ def _candidate_name_for_user(user_id: str | None) -> str:
     return str(user.get("display_name", "")).strip()
 
 
-def build_agent_tools(user_id: str | None = None) -> list[BaseTool]:
+def build_agent_tools(
+    user_id: str | None = None,
+    *,
+    include_google: bool | None = None,
+) -> list[BaseTool]:
     """
     Build one tool set bound to exactly one authenticated workspace.
 
     The bound user ID and candidate display name are intentionally absent from every
     public tool schema, so the language model cannot select, replace or spoof either value.
+    Hosted recruiter demos exclude Gmail and Calendar tools entirely.
     """
     bound_user_id = normalize_user_id(user_id) if user_id is not None else None
+    if include_google is None:
+        include_google = not settings.hosted_recruiter_demo
 
     @tool
     def run_jobcopilot_pipeline_tool(job_text: str) -> dict[str, Any]:
@@ -220,6 +227,14 @@ def build_agent_tools(user_id: str | None = None) -> list[BaseTool]:
             for record in load_application_records(user_id=bound_user_id)
         ]
 
+    core_tools = [
+        run_jobcopilot_pipeline_tool,
+        save_application_record_tool,
+        list_saved_applications_tool,
+    ]
+    if not include_google:
+        return core_tools
+
     return [
         run_jobcopilot_pipeline_tool,
         create_gmail_draft_tool,
@@ -229,12 +244,15 @@ def build_agent_tools(user_id: str | None = None) -> list[BaseTool]:
     ]
 
 
-# Backward-compatible unbound tools used by command-line and test callers.
-AGENT_TOOLS = build_agent_tools()
+# Backward-compatible named tools for command-line and direct test callers.
+_LEGACY_AGENT_TOOLS = build_agent_tools(include_google=True)
 (
     run_jobcopilot_pipeline_tool,
     create_gmail_draft_tool,
     create_followup_reminder_tool,
     save_application_record_tool,
     list_saved_applications_tool,
-) = AGENT_TOOLS
+) = _LEGACY_AGENT_TOOLS
+
+# The default graph-facing tool list respects the active deployment boundary.
+AGENT_TOOLS = build_agent_tools()

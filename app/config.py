@@ -31,6 +31,14 @@ def _env_int(name: str, default: int, *, minimum: int = 0) -> int:
     return value
 
 
+def _hosted_recruiter_demo_default() -> bool:
+    """Fail closed for authenticated Supabase deployments unless explicitly overridden."""
+    return (
+        os.getenv("PERSISTENCE_BACKEND", "auto").strip().lower() == "supabase"
+        and _env_flag("BETA_AUTH_ENABLED", default=False)
+    )
+
+
 @dataclass(frozen=True)
 class Settings:
     llm_provider: str = os.getenv("LLM_PROVIDER", "openai")
@@ -67,6 +75,15 @@ class Settings:
     beta_auth_enabled: bool = _env_flag("BETA_AUTH_ENABLED", default=False)
     beta_daily_ai_limit: int = _env_int("BETA_DAILY_AI_LIMIT", 10, minimum=1)
     local_candidate_name: str = os.getenv("LOCAL_CANDIDATE_NAME", "").strip()
+
+    # Hosted recruiter demo removes external Google actions while preserving the
+    # complete analysis, grounding, application-pack and tracker experience.
+    # Authenticated Supabase deployments fail closed into this boundary unless
+    # HOSTED_RECRUITER_DEMO is explicitly set to false for controlled testing.
+    hosted_recruiter_demo: bool = _env_flag(
+        "HOSTED_RECRUITER_DEMO",
+        default=_hosted_recruiter_demo_default(),
+    )
 
     # Deployment persistence. Prefer Supabase's current sb_secret_* server key.
     # SUPABASE_SERVICE_ROLE_KEY remains supported for legacy projects until migration.

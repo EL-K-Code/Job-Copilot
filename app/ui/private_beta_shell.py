@@ -3,9 +3,12 @@ from __future__ import annotations
 import streamlit as st
 
 from app.config import settings
+from app.deployment_readiness import hosted_recruiter_demo_issues
 from app.services.usage_quota import get_daily_usage
 from app.tenancy import DEFAULT_LOCAL_USER_ID, ensure_user_directories
 from app.tools.gmail_tools import google_token_exists
+from app.ui import hosted_auth
+from app.ui import hosted_recruiter_demo as hosted
 from app.ui import premium_private_beta as premium
 from app.ui.application_workspace import render_application_workspace
 from app.ui.premium_polish import inject_premium_polish
@@ -45,7 +48,10 @@ def _render_sidebar(user: dict[str, str]) -> str:
             '<div class="jc-brand">JobCopilot<span class="jc-brand-dot">.</span></div>',
             unsafe_allow_html=True,
         )
-        st.caption("Private beta workspace")
+        if settings.hosted_recruiter_demo:
+            st.caption("Hosted recruiter demo")
+        else:
+            st.caption("Private beta workspace")
         st.divider()
         page = st.radio(
             "Navigation",
@@ -62,10 +68,14 @@ def _render_sidebar(user: dict[str, str]) -> str:
         st.progress(min(usage.used / usage.limit, 1.0))
         st.caption(f"{usage.remaining} AI operation(s) remaining today")
 
-        if google_token_exists(user["user_id"]):
+        if settings.hosted_recruiter_demo:
+            st.success("Durable state · Supabase")
+            st.caption("External Google actions disabled")
+        elif google_token_exists(user["user_id"]):
             st.success("Google connected")
         else:
             st.info("Google not connected")
+
         if settings.beta_auth_enabled and st.button(
             "Sign out",
             use_container_width=True,
@@ -74,17 +84,40 @@ def _render_sidebar(user: dict[str, str]) -> str:
     return page
 
 
+def _require_safe_hosted_configuration() -> None:
+    issues = hosted_recruiter_demo_issues(settings)
+    if not issues:
+        return
+
+    st.error("Hosted recruiter demo configuration is incomplete.")
+    for issue in issues:
+        st.write(f"• {issue}")
+    st.caption(
+        "The app is stopped before authentication so it cannot silently fall back to local persistence."
+    )
+    st.stop()
+
+
 def main() -> None:
     st.set_page_config(
-        page_title="JobCopilot Private Beta",
+        page_title=(
+            "JobCopilot Recruiter Demo"
+            if settings.hosted_recruiter_demo
+            else "JobCopilot Private Beta"
+        ),
         page_icon="✦",
         layout="wide",
         initial_sidebar_state="expanded",
     )
     premium._inject_theme()
     inject_premium_polish()
+    _require_safe_hosted_configuration()
 
-    user = premium._authenticated_user()
+    user = (
+        hosted_auth.authenticated_user()
+        if settings.hosted_recruiter_demo
+        else premium._authenticated_user()
+    )
     if user is None:
         st.stop()
     user = _effective_user(user)
@@ -98,14 +131,26 @@ def main() -> None:
 
     page = _render_sidebar(user)
     if page == "Overview":
-        premium._render_overview(user)
+        if settings.hosted_recruiter_demo:
+            hosted.render_overview(user)
+        else:
+            premium._render_overview(user)
     elif page == "Profile":
         render_profile_page(user_id)
     elif page == "New application":
-        render_application_workspace(user)
+        if settings.hosted_recruiter_demo:
+            hosted.render_application_workspace(user)
+        else:
+            render_application_workspace(user)
     elif page == "Agent Chat":
-        premium._render_agent_chat(user_id)
+        if settings.hosted_recruiter_demo:
+            hosted.render_agent_chat(user_id)
+        else:
+            premium._render_agent_chat(user_id)
     elif page == "Applications":
         premium._render_applications(user_id)
     else:
-        premium._render_settings(user_id)
+        if settings.hosted_recruiter_demo:
+            hosted.render_settings(user_id)
+        else:
+            premium._render_settings(user_id)
