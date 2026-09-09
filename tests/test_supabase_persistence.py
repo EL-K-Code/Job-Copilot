@@ -15,20 +15,20 @@ class _FakeResponse:
         return self._payload
 
 
-def _configure(monkeypatch):
+def _configure(monkeypatch, *, key: str = "sb_secret_server-key"):
     monkeypatch.setattr(
         persistence,
         "settings",
         SimpleNamespace(
             persistence_backend="supabase",
             supabase_url="https://example.supabase.co",
-            supabase_service_role_key="service-secret",
+            supabase_secret_key=key,
             supabase_timeout_seconds=7,
         ),
     )
 
 
-def test_supabase_state_upsert_never_places_service_key_in_payload(monkeypatch):
+def test_current_supabase_secret_key_is_apikey_only_and_never_in_payload(monkeypatch):
     _configure(monkeypatch)
     calls = []
 
@@ -47,8 +47,16 @@ def test_supabase_state_upsert_never_places_service_key_in_payload(monkeypatch):
         "namespace": "profile_memories",
         "payload": [{"id": "m1"}],
     }
-    assert kwargs["headers"]["Authorization"] == "Bearer service-secret"
-    assert "service-secret" not in str(kwargs["json"])
+    assert kwargs["headers"]["apikey"] == "sb_secret_server-key"
+    assert "Authorization" not in kwargs["headers"]
+    assert "sb_secret_server-key" not in str(kwargs["json"])
+
+
+def test_legacy_service_role_jwt_keeps_bearer_header(monkeypatch):
+    _configure(monkeypatch, key="legacy.jwt.service-role")
+    headers = persistence._headers()
+    assert headers["apikey"] == "legacy.jwt.service-role"
+    assert headers["Authorization"] == "Bearer legacy.jwt.service-role"
 
 
 def test_load_state_returns_tenant_scoped_payload(monkeypatch):
@@ -94,7 +102,7 @@ def test_auto_backend_falls_back_to_local_without_secrets(monkeypatch):
         SimpleNamespace(
             persistence_backend="auto",
             supabase_url="",
-            supabase_service_role_key="",
+            supabase_secret_key="",
         ),
     )
     assert persistence.using_supabase() is False
