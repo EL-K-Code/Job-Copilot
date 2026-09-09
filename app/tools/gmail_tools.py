@@ -11,20 +11,25 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 
 from app.config import settings
+from app.services.google_oauth import GOOGLE_SCOPES
 from app.tenancy import get_user_paths
-
-
-GOOGLE_SCOPES = [
-    "https://www.googleapis.com/auth/gmail.compose",
-    "https://www.googleapis.com/auth/calendar.events",
-]
 
 
 def _google_token_path(user_id: str | None = None):
     return settings.google_token_path if user_id is None else get_user_paths(user_id).google_token
 
 
+def _using_hosted_google_oauth() -> bool:
+    return bool(settings.hosted_recruiter_demo and settings.hosted_google_oauth_enabled)
+
+
 def google_token_exists(user_id: str | None = None) -> bool:
+    if _using_hosted_google_oauth():
+        if user_id is None:
+            return False
+        from app.services.google_oauth import hosted_google_token_exists
+
+        return hosted_google_token_exists(user_id)
     return _google_token_path(user_id).exists()
 
 
@@ -33,6 +38,17 @@ def get_google_credentials(
     *,
     user_id: str | None = None,
 ) -> Credentials:
+    if _using_hosted_google_oauth():
+        if user_id is None:
+            raise RuntimeError("Hosted Google OAuth requires an authenticated user.")
+        if interactive:
+            raise RuntimeError(
+                "Hosted Google OAuth must be started from the Settings connection flow."
+            )
+        from app.services.google_oauth import get_hosted_google_credentials
+
+        return get_hosted_google_credentials(user_id)
+
     token_path = _google_token_path(user_id)
     token_path.parent.mkdir(parents=True, exist_ok=True)
 
