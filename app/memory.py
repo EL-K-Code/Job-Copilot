@@ -20,10 +20,12 @@ from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import FAISS
 
 from app.config import settings
-from app.tenancy import get_user_paths
+from app.services.persistence import load_state, using_supabase
+from app.tenancy import get_user_paths, normalize_user_id
 
 
 logger = logging.getLogger(__name__)
+_PROFILE_NAMESPACE = "profile_memories"
 
 
 def _memory_paths(user_id: str | None = None) -> tuple[Path, Path]:
@@ -33,24 +35,13 @@ def _memory_paths(user_id: str | None = None) -> tuple[Path, Path]:
     return paths.profile_memories, paths.memory_index
 
 
-def load_profile_memories(
-    file_path: Path | None = None,
-    *,
-    user_id: str | None = None,
-) -> list[dict[str, Any]]:
-    """Load and validate structured profile memories from a JSON file."""
-    target_path = file_path or _memory_paths(user_id)[0]
-
-    if not target_path.exists():
-        raise FileNotFoundError(f"Profile memories file not found: {target_path}")
-
-    with open(target_path, "r", encoding="utf-8") as file_handle:
-        data = json.load(file_handle)
-
+def validate_profile_memories(data: Any) -> list[dict[str, Any]]:
+    """Validate the atomic memory contract independently of its storage backend."""
     if not isinstance(data, list):
         raise ValueError("Profile memories JSON must contain a list of memory objects.")
 
     seen_ids: set[str] = set()
+    validated: list[dict[str, Any]] = []
     for index, memory in enumerate(data, start=1):
         if not isinstance(memory, dict):
             raise ValueError(f"Profile memory {index} must be a JSON object.")
@@ -64,8 +55,32 @@ def load_profile_memories(
         if memory_id in seen_ids:
             raise ValueError(f"Profile memories contain duplicate id: {memory_id}")
         seen_ids.add(memory_id)
+        validated.append(dict(memory))
+    return validated
 
-    return data
+
+def load_profile_memories(
+    file_path: Path | None = None,
+    *,
+    user_id: str | None = None,
+) -> list[dict[str, Any]]:
+    """Load and validate structured profile memories from local or persistent storage."""
+    if file_path is None and user_id is not None and using_supabase():
+        normalized = normalize_user_id(user_id)
+        data = load_state(normalized, _PROFILE_NAMESPACE, [])
+        if not data:
+            raise FileNotFoundError(
+                f"Profile memories not found for user: {normalized}"
+            )
+        return validate_profile_memories(data)
+
+    target_path = file_path or _memory_paths(user_id)[0]
+    if not target_path.exists():
+        raise FileNotFoundError(f"Profile memories file not found: {target_path}")
+
+    with open(target_path, "r", encoding="utf-8") as file_handle:
+        data = json.load(file_handle)
+    return validate_profile_memories(data)
 
 
 def profile_memories_to_documents(memories: list[dict[str, Any]]) -> list[Document]:
@@ -90,13 +105,7 @@ def profile_memories_to_documents(memories: list[dict[str, Any]]) -> list[Docume
 
 @lru_cache(maxsize=1)
 def get_embeddings_model() -> HuggingFaceEmbeddings:
-    """
-    Return one process-cached public embeddings model for profile retrieval.
-
-    The model repository is public, so authentication is explicitly disabled.
-    This prevents deployments from suggesting that HF_TOKEN is required while
-    still allowing the normal local Hugging Face cache to be used.
-    """
+    """Return one process-cached public embeddings model for profile retrieval."""
     return HuggingFaceEmbeddings(
         model_name="sentence-transformers/all-MiniLM-L6-v2",
         model_kwargs={"token": False},
@@ -192,8 +201,20 @@ def _get_or_create_profile_vector_store_cached(
     return vector_store
 
 
+@lru_cache(maxsize=64)
+def _get_or_create_remote_profile_vector_store_cached(user_id: str) -> FAISS:
+    """Build a process-local FAISS cache from the durable Supabase profile source."""
+    memories = load_profile_memories(user_id=user_id)
+    return build_profile_vector_store(memories)
+
+
 def get_or_create_profile_vector_store(*, user_id: str | None = None) -> FAISS:
-    """Return a process-cached vector store keyed by the owning user's private paths."""
+    """Return a process-cached vector store for local or Supabase-backed profiles."""
+    if user_id is not None and using_supabase():
+        return _get_or_create_remote_profile_vector_store_cached(
+            normalize_user_id(user_id)
+        )
+
     profile_path, index_path = _memory_paths(user_id)
     return _get_or_create_profile_vector_store_cached(
         str(profile_path.resolve()),
@@ -205,6 +226,7 @@ def get_or_create_profile_vector_store(*, user_id: str | None = None) -> FAISS:
 def clear_profile_vector_store_cache() -> None:
     """Clear all process caches after any user's profile memories are changed."""
     _get_or_create_profile_vector_store_cached.cache_clear()
+    _get_or_create_remote_profile_vector_store_cached.cache_clear()
 
 
 def retrieve_profile_context_with_scores(
