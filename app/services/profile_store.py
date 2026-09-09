@@ -9,8 +9,17 @@ from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import Any
 
-from app.memory import clear_profile_vector_store_cache, load_profile_memories
-from app.tenancy import ensure_user_directories, get_user_paths
+from app.memory import (
+    clear_profile_vector_store_cache,
+    load_profile_memories,
+    validate_profile_memories,
+)
+from app.services.applications_store import load_application_records
+from app.services.persistence import delete_user_state, save_state, using_supabase
+from app.tenancy import ensure_user_directories, get_user_paths, normalize_user_id
+
+
+_PROFILE_NAMESPACE = "profile_memories"
 
 
 def _atomic_json_write(path: Path, payload: Any) -> None:
@@ -39,16 +48,18 @@ def save_user_profile_memories(
     user_id: str,
     memories: list[dict[str, Any]],
 ) -> Path:
-    """Validate then atomically replace one user's profile-memory source of truth."""
-    paths = ensure_user_directories(user_id)
-    validation_file = paths.root / ".profile_memories.validation.json"
-    _atomic_json_write(validation_file, memories)
-    try:
-        validated = load_profile_memories(file_path=validation_file)
-    finally:
-        validation_file.unlink(missing_ok=True)
+    """Validate then replace one user's profile-memory source of truth."""
+    normalized = normalize_user_id(user_id)
+    validated = validate_profile_memories(memories)
+    paths = ensure_user_directories(normalized)
 
-    _atomic_json_write(paths.profile_memories, validated)
+    if using_supabase():
+        save_state(normalized, _PROFILE_NAMESPACE, validated)
+        # Keep a disposable local mirror for UI paths that only need an existence hint.
+        _atomic_json_write(paths.profile_memories, validated)
+    else:
+        _atomic_json_write(paths.profile_memories, validated)
+
     if paths.memory_index.exists():
         shutil.rmtree(paths.memory_index)
     clear_profile_vector_store_cache()
@@ -60,22 +71,39 @@ def load_user_profile_memories(user_id: str) -> list[dict[str, Any]]:
 
 
 def export_user_data(user_id: str) -> bytes:
-    """Return a ZIP containing only exportable data owned by the authenticated user."""
-    paths = get_user_paths(user_id)
+    """Return a ZIP containing exportable data owned by the authenticated user."""
+    normalized = normalize_user_id(user_id)
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
-        for path, archive_name in (
-            (paths.profile_memories, "profile_memories.json"),
-            (paths.applications, "applications.json"),
-        ):
-            if path.exists():
-                archive.write(path, archive_name)
+        try:
+            profile = load_user_profile_memories(normalized)
+        except FileNotFoundError:
+            profile = []
+        if profile:
+            archive.writestr(
+                "profile_memories.json",
+                json.dumps(profile, indent=2, ensure_ascii=False),
+            )
+
+        applications = [
+            record.model_dump()
+            for record in load_application_records(user_id=normalized)
+        ]
+        if applications:
+            archive.writestr(
+                "applications.json",
+                json.dumps(applications, indent=2, ensure_ascii=False),
+            )
     return buffer.getvalue()
 
 
 def delete_user_data(user_id: str) -> None:
-    """Delete the authenticated user's private workspace, including OAuth tokens."""
-    paths = get_user_paths(user_id)
+    """Delete one user's persistent state and disposable local workspace."""
+    normalized = normalize_user_id(user_id)
+    if using_supabase():
+        delete_user_state(normalized)
+
+    paths = get_user_paths(normalized)
     if paths.root.exists():
         shutil.rmtree(paths.root)
     clear_profile_vector_store_cache()
