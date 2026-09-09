@@ -4,7 +4,7 @@ JobCopilot is intentionally evolving from a prompt-driven job assistant into an 
 
 ## Phase 1 — Hybrid evidence retrieval + reranking
 
-Status: **implemented**.
+Status: **implemented and benchmarked**.
 
 Production retrieval path:
 
@@ -32,14 +32,28 @@ Engineering guarantees:
 - dense rank/distance, sparse rank/score, RRF rank/score and reranker score are auditable;
 - cross-encoder failure falls back safely to deterministic fused retrieval;
 - dense FAISS remains available as a benchmark baseline;
-- dense, hybrid and hybrid+reranker can be compared on the same labeled retrieval cases;
-- quality improvements are claimed only after the benchmark demonstrates them.
+- dense, hybrid and hybrid+reranker are compared on the same labeled retrieval cases;
+- quality improvements are claimed only where the benchmark demonstrates them.
 
-Primary metrics: MRR, Recall@1/3/5 and NDCG@1/3/5.
+Primary metrics: MRR, Recall@1/3/5, NDCG@1/3/5 and warm-process retrieval latency.
+
+### Measured retrieval trade-off — v2 synthetic benchmark
+
+The first comparative run uses 20 labeled synthetic profile-memory queries and top-5 retrieval. Latency is measured after one strategy-specific warm-up, so cold model-loading time is excluded.
+
+| Strategy | MRR | Recall@1 | Recall@3 | Recall@5 | NDCG@5 | Mean latency |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Dense FAISS | **1.000** | **0.825** | 0.975 | 0.975 | **0.9766** | **11.1 ms** |
+| FAISS + BM25 + RRF | 0.975 | 0.800 | 0.975 | 0.975 | 0.9613 | 12.0 ms |
+| Hybrid + cross-encoder | 0.975 | 0.775 | **1.000** | **1.000** | 0.9655 | 75.0 ms |
+
+The result is intentionally treated as a **trade-off, not a universal win**. Dense FAISS leads MRR, Recall@1, NDCG@5 and latency on this small benchmark, while the cross-encoder path raises Recall@3 and Recall@5 to 1.0. Relative to dense, the reranked path gains +0.025 Recall@5 but loses 0.025 MRR and about 0.011 NDCG@5 while adding roughly 64 ms mean warm latency.
+
+This is exactly why the retrieval strategies remain configurable: later evaluation can decide whether maximum evidence recall, top-rank quality or latency is the right objective for a given workflow.
 
 ## Phase 2 — Evaluation and observability layer
 
-Status: **runtime observability implemented; comparative benchmark publication in validation**.
+Status: **implemented and validated in CI**.
 
 The product now has a dedicated **AI Evaluation** surface that separates two kinds of evidence:
 
@@ -58,6 +72,7 @@ Runtime metrics:
 Offline evaluation:
 
 - retrieval: MRR, Recall@1/3/5 and NDCG@1/3/5;
+- warm-process retrieval latency: mean, median and P95;
 - comparative strategies: dense FAISS vs hybrid FAISS+BM25+RRF vs hybrid+cross-encoder;
 - compact aggregate benchmark summary with deltas against the dense baseline;
 - extraction and claim-grounding benchmark tooling retained as separate evaluation tracks.
