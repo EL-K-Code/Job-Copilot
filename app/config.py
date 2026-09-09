@@ -68,6 +68,13 @@ class Settings:
     beta_daily_ai_limit: int = _env_int("BETA_DAILY_AI_LIMIT", 10, minimum=1)
     local_candidate_name: str = os.getenv("LOCAL_CANDIDATE_NAME", "").strip()
 
+    # Hosted recruiter demo removes external Google actions while preserving the
+    # complete analysis, grounding, application-pack and tracker experience.
+    hosted_recruiter_demo: bool = _env_flag(
+        "HOSTED_RECRUITER_DEMO",
+        default=False,
+    )
+
     # Deployment persistence. Prefer Supabase's current sb_secret_* server key.
     # SUPABASE_SERVICE_ROLE_KEY remains supported for legacy projects until migration.
     persistence_backend: str = os.getenv("PERSISTENCE_BACKEND", "auto")
