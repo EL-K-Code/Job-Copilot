@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import sys
 from pathlib import Path
-from statistics import mean
+from statistics import mean, median
+from time import perf_counter
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
@@ -19,7 +21,7 @@ STRATEGY_CONFIGS = {
     "hybrid": {"strategy": "hybrid", "rerank": False},
     "hybrid_rerank": {"strategy": "hybrid", "rerank": True},
 }
-METRIC_NAMES = [
+QUALITY_METRIC_NAMES = [
     "mrr",
     "recall@1",
     "recall@3",
@@ -38,16 +40,37 @@ def load_jsonl(path: Path) -> list[dict]:
     ]
 
 
-def evaluate_strategy(cases: list[dict], strategy_name: str, *, k: int) -> dict:
+def _nearest_rank_percentile(values: list[float], percentile: float) -> float:
+    if not values:
+        return 0.0
+    ordered = sorted(values)
+    index = max(0, min(len(ordered) - 1, math.ceil(percentile * len(ordered)) - 1))
+    return float(ordered[index])
+
+
+def _retrieve(case: dict, strategy_name: str, *, k: int):
     config = STRATEGY_CONFIGS[strategy_name]
+    return retrieve_profile_context_with_scores(
+        case["query"],
+        k=k,
+        strategy=str(config["strategy"]),
+        rerank=bool(config["rerank"]),
+    )
+
+
+def evaluate_strategy(cases: list[dict], strategy_name: str, *, k: int) -> dict:
     results = []
+
+    # Exclude one-off embedding/vector-store/cross-encoder initialization from the
+    # latency comparison. The report labels these measurements as warm-process latency.
+    if cases:
+        _retrieve(cases[0], strategy_name, k=k)
+
     for case in cases:
-        retrieved = retrieve_profile_context_with_scores(
-            case["query"],
-            k=k,
-            strategy=str(config["strategy"]),
-            rerank=bool(config["rerank"]),
-        )
+        started = perf_counter()
+        retrieved = _retrieve(case, strategy_name, k=k)
+        latency_ms = (perf_counter() - started) * 1000
+
         ranked_ids = [
             str(document.metadata.get("id", ""))
             for document, _score in retrieved
@@ -63,16 +86,27 @@ def evaluate_strategy(cases: list[dict], strategy_name: str, *, k: int) -> dict:
                 "ranked_memory_ids": ranked_ids,
                 "relevant_memory_ids": case["relevant_memory_ids"],
                 "metrics": metrics,
+                "latency_ms": latency_ms,
             }
         )
 
+    aggregate = {
+        name: mean(item["metrics"][name] for item in results)
+        if results
+        else 0.0
+        for name in QUALITY_METRIC_NAMES
+    }
+    latencies = [float(item["latency_ms"]) for item in results]
+    aggregate.update(
+        {
+            "mean_latency_ms": mean(latencies) if latencies else 0.0,
+            "p50_latency_ms": median(latencies) if latencies else 0.0,
+            "p95_latency_ms": _nearest_rank_percentile(latencies, 0.95),
+        }
+    )
+
     return {
-        "aggregate": {
-            name: mean(item["metrics"][name] for item in results)
-            if results
-            else 0.0
-            for name in METRIC_NAMES
-        },
+        "aggregate": aggregate,
         "cases": results,
     }
 
@@ -101,6 +135,7 @@ def run(
     return {
         "number_of_cases": len(cases),
         "k": k,
+        "latency_scope": "warm_process",
         "default_strategy": default_strategy,
         # Backward-compatible aliases for existing consumers.
         "aggregate": default_report["aggregate"],
@@ -151,6 +186,7 @@ def main() -> None:
         json.dumps(
             {
                 "number_of_cases": report["number_of_cases"],
+                "latency_scope": report["latency_scope"],
                 "strategies": summary,
             },
             indent=2,
