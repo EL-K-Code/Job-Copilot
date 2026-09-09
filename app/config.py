@@ -58,12 +58,36 @@ class Settings:
     llm_provider: str = os.getenv("LLM_PROVIDER", "openai")
     llm_fallback_provider: str = os.getenv("LLM_FALLBACK_PROVIDER", "")
 
+    # Phase 4: deterministic routing policy. `single` preserves the legacy one-tier behavior.
+    llm_routing_mode: str = _env_choice(
+        "LLM_ROUTING_MODE",
+        "adaptive",
+        allowed={"adaptive", "single"},
+    )
+    llm_routing_complex_job_chars: int = _env_int(
+        "LLM_ROUTING_COMPLEX_JOB_CHARS",
+        6000,
+        minimum=500,
+    )
+    # Pricing is intentionally explicit/configurable so stale provider prices are never hidden
+    # in application code. JSON keys use `provider:model` and rates are USD / 1M tokens.
+    llm_pricing_version: str = os.getenv("LLM_PRICING_VERSION", "unconfigured").strip()
+    llm_pricing_json: str = os.getenv("LLM_PRICING_JSON", "").strip()
+
     openai_api_key: str = os.getenv("OPENAI_API_KEY", "")
     openai_model: str = os.getenv("OPENAI_MODEL", "gpt-4.1-mini")
     openai_profile_model: str = os.getenv(
         "OPENAI_PROFILE_MODEL",
         "gpt-4.1-nano",
     )
+    openai_economy_model: str = os.getenv(
+        "OPENAI_ECONOMY_MODEL",
+        os.getenv("OPENAI_PROFILE_MODEL", "gpt-4.1-nano"),
+    ).strip()
+    openai_strong_model: str = os.getenv(
+        "OPENAI_STRONG_MODEL",
+        os.getenv("OPENAI_MODEL", "gpt-4.1-mini"),
+    ).strip()
 
     anthropic_api_key: str = os.getenv("ANTHROPIC_API_KEY", "")
     anthropic_model: str = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-6")
@@ -71,6 +95,14 @@ class Settings:
         "ANTHROPIC_PROFILE_MODEL",
         os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-6"),
     )
+    anthropic_economy_model: str = os.getenv(
+        "ANTHROPIC_ECONOMY_MODEL",
+        os.getenv("ANTHROPIC_PROFILE_MODEL", os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-6")),
+    ).strip()
+    anthropic_strong_model: str = os.getenv(
+        "ANTHROPIC_STRONG_MODEL",
+        os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-6"),
+    ).strip()
 
     # Local Google OAuth remains filesystem-backed for local development.
     google_client_secret_file: str = os.getenv(
