@@ -11,6 +11,12 @@ from langchain_openai import ChatOpenAI
 
 from app.config import settings
 from app.services.llm_telemetry import instrument_llm_runnable
+from app.services.model_routing import (
+    ModelRouteDecision,
+    provider_model_for_tier,
+    route_operation,
+    stronger_tiers,
+)
 
 SUPPORTED_LLM_PROVIDERS = {"anthropic", "openai"}
 _PROFILE_EXTRACTION_OPERATION = "ProfileExtraction"
@@ -121,22 +127,40 @@ def _with_fallbacks(runnables: Sequence[Runnable]) -> Runnable:
     return primary.with_fallbacks(list(fallbacks), exceptions_to_handle=(Exception,))
 
 
+def _tier_model_candidates(
+    provider: str,
+    decision: ModelRouteDecision,
+) -> tuple[tuple[str, str], ...]:
+    """Return deduplicated tier/model candidates, escalating only toward stronger tiers."""
+    output: list[tuple[str, str]] = []
+    seen_models: set[str] = set()
+    for tier in stronger_tiers(decision.tier):
+        model_name = provider_model_for_tier(provider, tier)
+        if not model_name or model_name in seen_models:
+            continue
+        seen_models.add(model_name)
+        output.append((tier, model_name))
+    return tuple(output)
+
+
 def _structured_model_candidates(provider: str, operation: str) -> tuple[str, ...]:
-    """Choose a fast extraction model first, then the normal model as a safe fallback."""
-    standard_model = provider_model_name(provider)
-    if operation != _PROFILE_EXTRACTION_OPERATION:
-        return (standard_model,)
-
-    profile_model = provider_profile_model_name(provider)
-    return tuple(dict.fromkeys((profile_model, standard_model)))
+    """Backward-compatible public helper returning the adaptive model sequence."""
+    decision = route_operation(operation)
+    return tuple(model for _tier, model in _tier_model_candidates(provider, decision))
 
 
-def get_structured_chat_model(schema: type[Any]) -> Runnable:
-    """Return structured output with per-attempt provider telemetry and fallback."""
-    operation = schema.__name__
+def get_structured_chat_model(
+    schema: type[Any],
+    *,
+    route: ModelRouteDecision | None = None,
+    operation: str | None = None,
+) -> Runnable:
+    """Return structured output with adaptive routing, telemetry and provider fallback."""
+    operation_name = operation or schema.__name__
+    decision = route or route_operation(operation_name)
     models = []
     for provider in active_provider_chain():
-        for model_name in _structured_model_candidates(provider, operation):
+        for tier, model_name in _tier_model_candidates(provider, decision):
             runnable = build_chat_model(
                 provider,
                 model_name=model_name,
@@ -146,24 +170,35 @@ def get_structured_chat_model(schema: type[Any]) -> Runnable:
                     runnable,
                     provider=provider,
                     model=model_name,
-                    operation=operation,
+                    operation=operation_name,
+                    routing_tier=tier,
+                    routing_reason=decision.reason,
+                    routing_escalated=decision.escalated,
                 )
             )
     return _with_fallbacks(models)
 
 
-def get_tool_calling_chat_model(tools: list[BaseTool]) -> Runnable:
-    """Return a tool-bound agent model with provider telemetry and fallback."""
+def get_tool_calling_chat_model(
+    tools: list[BaseTool],
+    *,
+    route: ModelRouteDecision | None = None,
+) -> Runnable:
+    """Return a tool-bound agent model with adaptive routing and provider telemetry."""
+    decision = route or route_operation("AgentChat")
     models = []
     for provider in active_provider_chain():
-        model_name = provider_model_name(provider)
-        runnable = build_chat_model(provider, model_name=model_name).bind_tools(tools)
-        models.append(
-            instrument_llm_runnable(
-                runnable,
-                provider=provider,
-                model=model_name,
-                operation="AgentChat",
+        for tier, model_name in _tier_model_candidates(provider, decision):
+            runnable = build_chat_model(provider, model_name=model_name).bind_tools(tools)
+            models.append(
+                instrument_llm_runnable(
+                    runnable,
+                    provider=provider,
+                    model=model_name,
+                    operation="AgentChat",
+                    routing_tier=tier,
+                    routing_reason=decision.reason,
+                    routing_escalated=decision.escalated,
+                )
             )
-        )
     return _with_fallbacks(models)
