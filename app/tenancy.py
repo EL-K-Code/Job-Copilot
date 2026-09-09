@@ -67,19 +67,14 @@ def ensure_user_directories(user_id: str | None) -> UserPaths:
     # On Streamlit Cloud the filesystem is disposable, so recreate only that small
     # mirror from durable Supabase state after a restart. The source of truth remains
     # the database; FAISS indexes are intentionally rebuilt process-locally.
-    try:
-        from app.services.persistence import load_state, using_supabase
+    from app.services.persistence import load_state, using_supabase
 
-        if using_supabase() and not paths.profile_memories.exists():
-            payload = load_state(paths.user_id, "profile_memories", [])
-            if isinstance(payload, list) and payload:
-                paths.profile_memories.write_text(
-                    json.dumps(payload, indent=2, ensure_ascii=False),
-                    encoding="utf-8",
-                )
-    except Exception:
-        # Directory creation must remain usable even if the remote store is temporarily
-        # unavailable; the actual data-loading path will surface a concise backend error.
-        pass
+    if using_supabase() and not paths.profile_memories.exists():
+        payload = load_state(paths.user_id, "profile_memories", [])
+        if isinstance(payload, list) and payload:
+            paths.profile_memories.write_text(
+                json.dumps(payload, indent=2, ensure_ascii=False),
+                encoding="utf-8",
+            )
 
     return paths
