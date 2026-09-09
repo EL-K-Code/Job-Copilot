@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 from datetime import date, timedelta
 from html import escape
 
@@ -56,6 +57,12 @@ def _safe_editor_value(key: str, fallback: str) -> str:
     return str(value) if isinstance(value, str) else fallback
 
 
+def _workflow_scope(company: str, role: str) -> str:
+    """Keep confirmation widgets isolated when the current analyzed offer changes."""
+    canonical = f"{company.strip().casefold()}|{role.strip().casefold()}"
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:12]
+
+
 def render_application_workflow_panel(user: dict[str, str]) -> None:
     """Render the deterministic, human-supervised lifecycle for the current analyzed offer."""
     results = st.session_state.get("results")
@@ -69,6 +76,7 @@ def render_application_workflow_panel(user: dict[str, str]) -> None:
     if not company or not role or company == "Unknown" or role == "Unknown":
         return
 
+    scope = _workflow_scope(company, role)
     user_id = user["user_id"]
     record = find_existing_application(company, role, user_id=user_id)
 
@@ -88,7 +96,7 @@ def render_application_workflow_panel(user: dict[str, str]) -> None:
                 "Track as ready to apply",
                 type="primary",
                 use_container_width=True,
-                key="workflow-track-current",
+                key=f"workflow-track-current-{scope}",
             ):
                 reminder = st.session_state.get("beta_followup_date")
                 reminder_date = str(reminder) if reminder else ""
@@ -143,7 +151,7 @@ def render_application_workflow_panel(user: dict[str, str]) -> None:
                 "Move to awaiting approval",
                 type="primary",
                 use_container_width=True,
-                key="workflow-request-approval",
+                key=f"workflow-request-approval-{scope}",
             ):
                 request_application_approval(
                     company,
@@ -159,14 +167,14 @@ def render_application_workflow_panel(user: dict[str, str]) -> None:
             st.markdown("### Confirm actual submission")
             confirmed = st.checkbox(
                 "I confirm that I actually submitted or sent this application.",
-                key="workflow-confirm-applied",
+                key=f"workflow-confirm-applied-{scope}",
             )
             if st.button(
                 "Mark as applied",
                 type="primary",
                 use_container_width=True,
                 disabled=not confirmed,
-                key="workflow-mark-applied",
+                key=f"workflow-mark-applied-{scope}",
             ):
                 mark_application_applied(
                     company,
@@ -188,12 +196,12 @@ def render_application_workflow_panel(user: dict[str, str]) -> None:
             followup = st.date_input(
                 "Follow-up date",
                 value=max(current_reminder, date.today()) if stage != "follow_up_due" else current_reminder,
-                key="workflow-followup-date",
+                key=f"workflow-followup-date-{scope}",
             )
             if st.button(
                 "Save follow-up date",
                 use_container_width=True,
-                key="workflow-save-followup",
+                key=f"workflow-save-followup-{scope}",
             ):
                 set_followup_reminder(
                     company,
@@ -212,7 +220,7 @@ def render_application_workflow_panel(user: dict[str, str]) -> None:
                     "Interview",
                     use_container_width=True,
                     disabled=stage == "interview",
-                    key="workflow-outcome-interview",
+                    key=f"workflow-outcome-interview-{scope}",
                 ):
                     set_application_outcome(
                         company,
@@ -226,7 +234,7 @@ def render_application_workflow_panel(user: dict[str, str]) -> None:
                 if st.button(
                     "Rejected",
                     use_container_width=True,
-                    key="workflow-outcome-rejected",
+                    key=f"workflow-outcome-rejected-{scope}",
                 ):
                     set_application_outcome(
                         company,
@@ -240,7 +248,7 @@ def render_application_workflow_panel(user: dict[str, str]) -> None:
                 if st.button(
                     "Offer",
                     use_container_width=True,
-                    key="workflow-outcome-offer",
+                    key=f"workflow-outcome-offer-{scope}",
                 ):
                     set_application_outcome(
                         company,
