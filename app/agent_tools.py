@@ -7,6 +7,17 @@ from langchain_core.tools import BaseTool, tool
 
 from app.auth import load_beta_users
 from app.config import settings
+from app.services.application_workflow import (
+    external_action_already_recorded,
+    external_action_key,
+    get_workflow_snapshot,
+    list_workflow_snapshots,
+    mark_application_applied,
+    record_external_action,
+    request_application_approval,
+    set_application_outcome,
+    workflow_snapshot,
+)
 from app.services.applications_store import (
     add_application_record,
     create_application_record,
@@ -65,7 +76,8 @@ def build_agent_tools(
         """
         Run the full JobCopilot pipeline on a job offer using the current user's
         private profile memory. Return the structured role analysis, evidence match,
-        recommended application route and grounded application pack.
+        recommended application route and grounded application pack. This analysis is
+        read-only with respect to the application tracker.
         """
         from app.graph import jobcopilot_graph
 
@@ -101,10 +113,14 @@ def build_agent_tools(
         subject: str,
         body: str,
         confirmed: bool = False,
+        company: str = "",
+        role: str = "",
     ) -> dict[str, Any]:
         """
         Create a Gmail draft in the current user's connected Google account only
         after explicit confirmation of the exact recipient, subject and body.
+        When company and role identify a saved workflow, successful retries are
+        idempotent and an audit event is appended without storing OAuth credentials.
         """
         if not confirmed:
             return {
@@ -116,6 +132,8 @@ def build_agent_tools(
                     "to": to,
                     "subject": subject,
                     "body": body,
+                    "company": company,
+                    "role": role,
                 },
             }
         if (
@@ -127,15 +145,52 @@ def build_agent_tools(
                 "status": "google_not_connected",
                 "message": "Connect Google in Settings before creating a Gmail draft.",
             }
+
+        workflow = (
+            get_workflow_snapshot(company, role, user_id=bound_user_id)
+            if company.strip() and role.strip()
+            else None
+        )
+        action_key = external_action_key(
+            "gmail_draft_created",
+            company,
+            role,
+            to,
+            subject,
+            body,
+        )
+        if workflow and external_action_already_recorded(
+            company,
+            role,
+            action_key,
+            user_id=bound_user_id,
+        ):
+            return {
+                "status": "duplicate",
+                "message": "This exact Gmail draft action was already completed for the application.",
+                "action_key": action_key,
+            }
+
         result = create_gmail_draft(
             to=to,
             subject=subject,
             body=body,
             user_id=bound_user_id,
         )
+        if workflow:
+            record_external_action(
+                company,
+                role,
+                action_type="gmail_draft_created",
+                action_key=action_key,
+                user_id=bound_user_id,
+                actor="agent",
+                detail=f"Gmail draft created for recipient {to.strip()}.",
+            )
         return {
             "status": "created",
             "draft": result,
+            "action_key": action_key if workflow else "",
         }
 
     @tool
@@ -147,7 +202,8 @@ def build_agent_tools(
     ) -> dict[str, Any]:
         """
         Create a Calendar follow-up in the current user's connected Google account
-        only after explicit confirmation. followup_date must be YYYY-MM-DD.
+        only after explicit confirmation. followup_date must be YYYY-MM-DD. Saved
+        workflows use an idempotency key so a retry cannot create a second event.
         """
         if not confirmed:
             return {
@@ -171,26 +227,62 @@ def build_agent_tools(
                 "message": "Connect Google in Settings before creating a Calendar reminder.",
             }
 
-        if has_existing_reminder(
+        workflow = get_workflow_snapshot(
+            company,
+            role,
+            user_id=bound_user_id,
+        )
+        action_key = external_action_key(
+            "calendar_followup_created",
+            company,
+            role,
+            followup_date,
+        )
+        if workflow:
+            if external_action_already_recorded(
+                company,
+                role,
+                action_key,
+                user_id=bound_user_id,
+            ):
+                return {
+                    "status": "duplicate",
+                    "message": "This exact Calendar follow-up action was already completed.",
+                    "action_key": action_key,
+                }
+        elif has_existing_reminder(
             company=company,
             role=role,
             reminder_date=followup_date,
             user_id=bound_user_id,
         ):
+            # Backward-compatible protection for records created before workflow action keys.
             return {
                 "status": "duplicate",
-                "message": "A saved application already has this same reminder date.",
+                "message": "A legacy saved application already has this same reminder date.",
             }
+
         payload = build_followup_event_payload(
             company=company,
             role=role,
             followup_date=followup_date,
         )
-
         event_result = create_followup_event(
             **payload,
             user_id=bound_user_id,
         )
+
+        if workflow:
+            record_external_action(
+                company,
+                role,
+                action_type="calendar_followup_created",
+                action_key=action_key,
+                user_id=bound_user_id,
+                actor="agent",
+                detail=f"Google Calendar follow-up created for {followup_date}.",
+                reminder_date=followup_date,
+            )
 
         return {
             "status": "created",
@@ -198,6 +290,7 @@ def build_agent_tools(
             "role": role,
             "followup_date": followup_date,
             "calendar_event": event_result,
+            "action_key": action_key if workflow else "",
         }
 
     @tool
@@ -209,7 +302,10 @@ def build_agent_tools(
         reminder_date: str = "",
         notes: str = "",
     ) -> dict[str, Any]:
-        """Save an application in the current user's private workspace."""
+        """
+        Save a grounded application in the current user's private workspace.
+        A newly saved legacy-compatible draft maps to the Ready to apply workflow stage.
+        """
         existing = find_existing_application(
             company=company,
             role=role,
@@ -221,6 +317,7 @@ def build_agent_tools(
                 "status": "duplicate",
                 "message": "Application already exists.",
                 "existing_record": existing.model_dump(),
+                "workflow": workflow_snapshot(existing),
             }
 
         record = create_application_record(
@@ -245,19 +342,144 @@ def build_agent_tools(
         return {
             "status": "saved",
             "record": record.model_dump(),
+            "workflow": workflow_snapshot(record),
         }
 
     @tool
+    def get_application_workflow_tool(company: str, role: str) -> dict[str, Any]:
+        """Inspect the deterministic lifecycle stage and next safe actions for one saved application."""
+        snapshot = get_workflow_snapshot(
+            company,
+            role,
+            user_id=bound_user_id,
+        )
+        if snapshot is None:
+            return {
+                "status": "not_found",
+                "message": "Save the application to the tracker before advancing its workflow.",
+            }
+        return {"status": "ok", "workflow": snapshot}
+
+    @tool
+    def prepare_application_for_approval_tool(company: str, role: str) -> dict[str, Any]:
+        """
+        Move a saved Ready to apply application to Awaiting approval. This is an
+        internal state change only: it does not send email, submit a portal form or
+        create a Calendar event.
+        """
+        try:
+            updated = request_application_approval(
+                company,
+                role,
+                user_id=bound_user_id,
+                actor="agent",
+            )
+        except ValueError as exc:
+            return {"status": "invalid_transition", "message": str(exc)}
+        return {
+            "status": "awaiting_approval",
+            "workflow": workflow_snapshot(updated),
+            "message": "Application is awaiting explicit human approval before submission actions.",
+        }
+
+    @tool
+    def mark_application_applied_tool(
+        company: str,
+        role: str,
+        confirmed: bool = False,
+    ) -> dict[str, Any]:
+        """
+        Mark an application as actually submitted/sent only after the user explicitly
+        confirms that fact. This tool never submits an ATS form or sends Gmail itself.
+        """
+        snapshot = get_workflow_snapshot(company, role, user_id=bound_user_id)
+        if snapshot is None:
+            return {"status": "not_found", "message": "Application workflow not found."}
+        if not confirmed:
+            return {
+                "status": "confirmation_required",
+                "message": "Confirm only after the application was actually submitted or sent.",
+                "preview": {
+                    "company": company,
+                    "role": role,
+                    "current_stage": snapshot["stage"],
+                    "target_stage": "applied",
+                },
+            }
+        try:
+            updated = mark_application_applied(
+                company,
+                role,
+                user_id=bound_user_id,
+                actor="agent",
+            )
+        except ValueError as exc:
+            return {"status": "invalid_transition", "message": str(exc)}
+        return {"status": "applied", "workflow": workflow_snapshot(updated)}
+
+    @tool
+    def update_application_outcome_tool(
+        company: str,
+        role: str,
+        outcome: str,
+        confirmed: bool = False,
+    ) -> dict[str, Any]:
+        """
+        Record a user-reported outcome: interview, rejected, offer or closed.
+        Explicit confirmation is required so the model cannot infer an outcome.
+        """
+        if outcome not in {"interview", "rejected", "offer", "closed"}:
+            return {
+                "status": "invalid_outcome",
+                "message": "Outcome must be interview, rejected, offer or closed.",
+            }
+        if not confirmed:
+            return {
+                "status": "confirmation_required",
+                "message": "Confirm the reported application outcome before updating the tracker.",
+                "preview": {
+                    "company": company,
+                    "role": role,
+                    "outcome": outcome,
+                },
+            }
+        try:
+            updated = set_application_outcome(
+                company,
+                role,
+                outcome,
+                user_id=bound_user_id,
+                actor="agent",
+            )
+        except ValueError as exc:
+            return {"status": "invalid_transition", "message": str(exc)}
+        return {"status": "updated", "workflow": workflow_snapshot(updated)}
+
+    @tool
     def list_saved_applications_tool() -> list[dict[str, Any]]:
-        """List applications from the current user's private workspace only."""
-        return [
-            record.model_dump()
-            for record in load_application_records(user_id=bound_user_id)
-        ]
+        """List applications and effective workflow stages from the current user's private workspace only."""
+        records = load_application_records(user_id=bound_user_id)
+        snapshots = {
+            (item["company"].casefold(), item["role"].casefold()): item
+            for item in list_workflow_snapshots(bound_user_id)
+        }
+        output = []
+        for record in records:
+            payload = record.model_dump()
+            payload["workflow"] = snapshots.get(
+                (record.company.casefold(), record.role.casefold()),
+                workflow_snapshot(record),
+            )
+            output.append(payload)
+        return output
 
     core_tools = [
         run_jobcopilot_pipeline_tool,
         save_application_record_tool,
+        get_application_workflow_tool,
+        prepare_application_for_approval_tool,
+        mark_application_applied_tool,
+        update_application_outcome_tool,
         list_saved_applications_tool,
     ]
     if not include_google:
@@ -268,19 +490,28 @@ def build_agent_tools(
         create_gmail_draft_tool,
         create_followup_reminder_tool,
         save_application_record_tool,
+        get_application_workflow_tool,
+        prepare_application_for_approval_tool,
+        mark_application_applied_tool,
+        update_application_outcome_tool,
         list_saved_applications_tool,
     ]
 
 
 # Backward-compatible named tools for command-line and direct test callers.
 _LEGACY_AGENT_TOOLS = build_agent_tools(include_google=True)
-(
-    run_jobcopilot_pipeline_tool,
-    create_gmail_draft_tool,
-    create_followup_reminder_tool,
-    save_application_record_tool,
-    list_saved_applications_tool,
-) = _LEGACY_AGENT_TOOLS
+_LEGACY_AGENT_TOOL_MAP = {current.name: current for current in _LEGACY_AGENT_TOOLS}
+run_jobcopilot_pipeline_tool = _LEGACY_AGENT_TOOL_MAP["run_jobcopilot_pipeline_tool"]
+create_gmail_draft_tool = _LEGACY_AGENT_TOOL_MAP["create_gmail_draft_tool"]
+create_followup_reminder_tool = _LEGACY_AGENT_TOOL_MAP["create_followup_reminder_tool"]
+save_application_record_tool = _LEGACY_AGENT_TOOL_MAP["save_application_record_tool"]
+get_application_workflow_tool = _LEGACY_AGENT_TOOL_MAP["get_application_workflow_tool"]
+prepare_application_for_approval_tool = _LEGACY_AGENT_TOOL_MAP[
+    "prepare_application_for_approval_tool"
+]
+mark_application_applied_tool = _LEGACY_AGENT_TOOL_MAP["mark_application_applied_tool"]
+update_application_outcome_tool = _LEGACY_AGENT_TOOL_MAP["update_application_outcome_tool"]
+list_saved_applications_tool = _LEGACY_AGENT_TOOL_MAP["list_saved_applications_tool"]
 
 # The default graph-facing tool list respects the active deployment boundary.
 AGENT_TOOLS = build_agent_tools()

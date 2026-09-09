@@ -21,6 +21,10 @@ def test_hosted_recruiter_demo_excludes_google_agent_tools(monkeypatch):
     assert names == {
         "run_jobcopilot_pipeline_tool",
         "save_application_record_tool",
+        "get_application_workflow_tool",
+        "prepare_application_for_approval_tool",
+        "mark_application_applied_tool",
+        "update_application_outcome_tool",
         "list_saved_applications_tool",
     }
     assert "create_gmail_draft_tool" not in names
