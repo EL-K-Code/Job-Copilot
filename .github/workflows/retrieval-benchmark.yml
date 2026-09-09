@@ -2,13 +2,22 @@ name: JobCopilot Retrieval Benchmark
 
 on:
   workflow_dispatch:
+  pull_request:
+    paths:
+      - "app/retrieval.py"
+      - "app/services/evaluation_observability.py"
+      - "evaluation/retrieval_cases.v1.jsonl"
+      - "scripts/evaluate_retrieval.py"
+      - "scripts/summarize_retrieval_report.py"
+      - "requirements.txt"
+      - ".github/workflows/retrieval-benchmark.yml"
 
 permissions:
   contents: read
 
 concurrency:
-  group: jobcopilot-retrieval-benchmark
-  cancel-in-progress: false
+  group: jobcopilot-retrieval-benchmark-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   retrieval-benchmark:
@@ -55,6 +64,12 @@ jobs:
             --k 5 \
             --strategies dense hybrid hybrid_rerank
 
+      - name: Build compact publishable summary
+        run: |
+          python scripts/summarize_retrieval_report.py \
+            --input evaluation/results/retrieval_report.json \
+            --output evaluation/results/retrieval_summary.json
+
       - name: Publish run summary
         run: |
           python - <<'PY'
@@ -62,8 +77,8 @@ jobs:
           import os
           from pathlib import Path
 
-          report = json.loads(
-              Path("evaluation/results/retrieval_report.json").read_text(encoding="utf-8")
+          summary = json.loads(
+              Path("evaluation/results/retrieval_summary.json").read_text(encoding="utf-8")
           )
           labels = {
               "dense": "Dense FAISS",
@@ -73,15 +88,15 @@ jobs:
           lines = [
               "# JobCopilot Retrieval Benchmark",
               "",
-              f"- Cases evaluated: {report.get('number_of_cases', 0)}",
+              f"- Cases evaluated: {summary.get('number_of_cases', 0)}",
               "- Dense model: `sentence-transformers/all-MiniLM-L6-v2`",
               "- Reranker: `cross-encoder/ms-marco-MiniLM-L-6-v2`",
+              "- Benchmark type: synthetic engineering regression",
               "",
               "| Strategy | MRR | Recall@1 | Recall@3 | Recall@5 | NDCG@5 |",
               "|---|---:|---:|---:|---:|---:|",
           ]
-          for name, payload in report.get("strategies", {}).items():
-              aggregate = payload.get("aggregate", {})
+          for name, aggregate in summary.get("strategies", {}).items():
               lines.append(
                   "| "
                   + labels.get(name, name)
@@ -91,21 +106,35 @@ jobs:
                   + f" | {aggregate.get('recall@5', 0.0):.4f}"
                   + f" | {aggregate.get('ndcg@5', 0.0):.4f} |"
               )
+          rerank_delta = summary.get("delta_vs_dense", {}).get("hybrid_rerank", {})
+          if rerank_delta:
+              lines.extend(
+                  [
+                      "",
+                      "## Hybrid + cross-encoder delta vs dense",
+                      f"- MRR: {rerank_delta.get('mrr', 0.0):+.4f}",
+                      f"- Recall@5: {rerank_delta.get('recall@5', 0.0):+.4f}",
+                      f"- NDCG@5: {rerank_delta.get('ndcg@5', 0.0):+.4f}",
+                  ]
+              )
           lines.extend(
               [
                   "",
                   "All strategies are evaluated on the same fictional public profile and labeled retrieval cases.",
-                  "The complete case-level rankings are available in the workflow artifact.",
+                  "These are retrieval-regression metrics, not recruiter or hiring outcomes.",
+                  "The complete case-level report and compact summary are available in the workflow artifact.",
               ]
           )
           with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as handle:
               handle.write("\n".join(lines) + "\n")
           PY
 
-      - name: Upload retrieval report
+      - name: Upload retrieval reports
         uses: actions/upload-artifact@v4
         with:
           name: jobcopilot-retrieval-${{ github.run_number }}
-          path: evaluation/results/retrieval_report.json
+          path: |
+            evaluation/results/retrieval_report.json
+            evaluation/results/retrieval_summary.json
           if-no-files-found: error
           retention-days: 30
