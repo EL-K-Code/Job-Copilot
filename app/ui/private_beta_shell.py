@@ -3,9 +3,11 @@ from __future__ import annotations
 import streamlit as st
 
 from app.config import settings
+from app.deployment_readiness import hosted_recruiter_demo_issues
 from app.services.usage_quota import get_daily_usage
 from app.tenancy import DEFAULT_LOCAL_USER_ID, ensure_user_directories
 from app.tools.gmail_tools import google_token_exists
+from app.ui import hosted_auth
 from app.ui import hosted_recruiter_demo as hosted
 from app.ui import premium_private_beta as premium
 from app.ui.application_workspace import render_application_workspace
@@ -82,6 +84,20 @@ def _render_sidebar(user: dict[str, str]) -> str:
     return page
 
 
+def _require_safe_hosted_configuration() -> None:
+    issues = hosted_recruiter_demo_issues(settings)
+    if not issues:
+        return
+
+    st.error("Hosted recruiter demo configuration is incomplete.")
+    for issue in issues:
+        st.write(f"• {issue}")
+    st.caption(
+        "The app is stopped before authentication so it cannot silently fall back to local persistence."
+    )
+    st.stop()
+
+
 def main() -> None:
     st.set_page_config(
         page_title=(
@@ -95,8 +111,13 @@ def main() -> None:
     )
     premium._inject_theme()
     inject_premium_polish()
+    _require_safe_hosted_configuration()
 
-    user = premium._authenticated_user()
+    user = (
+        hosted_auth.authenticated_user()
+        if settings.hosted_recruiter_demo
+        else premium._authenticated_user()
+    )
     if user is None:
         st.stop()
     user = _effective_user(user)
