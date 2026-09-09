@@ -23,6 +23,12 @@ _CHANNEL_BADGES = {
     "unknown": "Route not stated",
 }
 
+_RETRIEVAL_LABELS = {
+    "hybrid_rrf_cross_encoder": "Hybrid retrieval + cross-encoder",
+    "hybrid_rrf": "Hybrid retrieval",
+    "dense": "Dense FAISS",
+}
+
 
 def _editor_key(prefix: str, title: str, text: str) -> str:
     digest = hashlib.sha256(f"{title}|{text}".encode("utf-8")).hexdigest()[:12]
@@ -34,6 +40,29 @@ def _editable_text(label: str, text: str, *, prefix: str, height: int) -> None:
     if key not in st.session_state:
         st.session_state[key] = text
     st.text_area(label, key=key, height=height)
+
+
+def retrieval_trace_label(record: dict) -> str:
+    """Build a compact human-readable provenance trace for one retrieved memory."""
+    strategy = str(record.get("retrieval_strategy", "")).strip()
+    if not strategy:
+        return ""
+
+    parts = [_RETRIEVAL_LABELS.get(strategy, strategy.replace("_", " ").title())]
+    final_rank = record.get("retrieval_final_rank")
+    dense_rank = record.get("retrieval_dense_rank")
+    sparse_rank = record.get("retrieval_sparse_rank")
+    fusion_rank = record.get("retrieval_fusion_rank")
+
+    if final_rank is not None:
+        parts.append(f"final #{final_rank}")
+    if dense_rank is not None:
+        parts.append(f"dense #{dense_rank}")
+    if sparse_rank is not None:
+        parts.append(f"BM25 #{sparse_rank}")
+    if fusion_rank is not None:
+        parts.append(f"RRF #{fusion_rank}")
+    return " · ".join(parts)
 
 
 def _render_claim_evidence(claim: dict, memory_records: list[dict]) -> None:
@@ -50,6 +79,9 @@ def _render_claim_evidence(claim: dict, memory_records: list[dict]) -> None:
     with st.expander("Verified evidence"):
         for record in supporting:
             st.write(f"• {record.get('content', '')}")
+            retrieval_trace = retrieval_trace_label(record)
+            if retrieval_trace:
+                st.caption(retrieval_trace)
         aligned = claim.get("aligned_job_terms", [])
         if aligned:
             st.caption("Aligned with: " + ", ".join(str(item) for item in aligned))

@@ -31,6 +31,20 @@ def _env_int(name: str, default: int, *, minimum: int = 0) -> int:
     return value
 
 
+def _env_choice(
+    name: str,
+    default: str,
+    *,
+    allowed: set[str],
+) -> str:
+    """Read a normalized enum-like environment value and fail fast on typos."""
+    value = os.getenv(name, default).strip().lower() or default
+    if value not in allowed:
+        supported = ", ".join(sorted(allowed))
+        raise ValueError(f"{name} must be one of: {supported}.")
+    return value
+
+
 def _hosted_recruiter_demo_default() -> bool:
     """Fail closed for authenticated Supabase deployments unless explicitly overridden."""
     return (
@@ -86,6 +100,28 @@ class Settings:
         "PROFILE_MEMORIES_FILE",
         "data/profile_memories.atomic.json",
     )
+
+    # Premium evidence retrieval. Dense FAISS remains available as an explicit baseline.
+    retrieval_strategy: str = _env_choice(
+        "RETRIEVAL_STRATEGY",
+        "hybrid",
+        allowed={"dense", "hybrid"},
+    )
+    retrieval_candidate_k: int = _env_int(
+        "RETRIEVAL_CANDIDATE_K",
+        16,
+        minimum=1,
+    )
+    retrieval_rrf_k: int = _env_int("RETRIEVAL_RRF_K", 60, minimum=1)
+    retrieval_rerank_k: int = _env_int("RETRIEVAL_RERANK_K", 12, minimum=1)
+    retrieval_reranker_enabled: bool = _env_flag(
+        "RETRIEVAL_RERANKER_ENABLED",
+        default=True,
+    )
+    retrieval_reranker_model: str = os.getenv(
+        "RETRIEVAL_RERANKER_MODEL",
+        "cross-encoder/ms-marco-MiniLM-L-6-v2",
+    ).strip()
 
     user_data_root: str = os.getenv("USER_DATA_ROOT", "data/users")
     beta_users_file: str = os.getenv("BETA_USERS_FILE", "data/beta_users.json")
