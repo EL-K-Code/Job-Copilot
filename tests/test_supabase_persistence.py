@@ -75,6 +75,29 @@ def test_load_state_returns_tenant_scoped_payload(monkeypatch):
     assert captured["params"]["namespace"] == "eq.profile_memories"
 
 
+def test_delete_user_state_preserves_beta_login_namespace(monkeypatch):
+    _configure(monkeypatch)
+    calls = []
+
+    def fake_request(method, url, **kwargs):
+        calls.append((method, url, kwargs))
+        return _FakeResponse(None, 204)
+
+    monkeypatch.setattr(persistence.requests, "request", fake_request)
+    persistence.delete_user_state("alice")
+
+    state_deletes = [
+        kwargs["params"]
+        for method, url, kwargs in calls
+        if method == "DELETE" and url.endswith("/rest/v1/jobcopilot_state")
+    ]
+    assert state_deletes == [
+        {"user_id": "eq.alice", "namespace": "eq.profile_memories"},
+        {"user_id": "eq.alice", "namespace": "eq.applications"},
+    ]
+    assert all(params.get("namespace") != "eq.beta_user" for params in state_deletes)
+
+
 def test_application_store_uses_durable_backend_for_authenticated_user(monkeypatch):
     stored = []
     monkeypatch.setattr(applications_store, "using_supabase", lambda: True)
