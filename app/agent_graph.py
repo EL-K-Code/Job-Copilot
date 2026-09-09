@@ -38,7 +38,7 @@ Rules:
 
 
 GOOGLE_ACTION_RULES = """
-This deployment also exposes optional Google actions:
+This deployment also exposes optional Google actions when the user has connected Google:
 - prepare Gmail drafts when email is an appropriate route,
 - prepare Google Calendar follow-up reminders.
 
@@ -48,6 +48,7 @@ External-action rules:
 - Ask the user to confirm the proposed external action.
 - Call an external-action tool with confirmed=true only after the user clearly confirms the proposed values.
 - If confirmation is absent or ambiguous, keep confirmed=false and do not retry the action automatically.
+- If Google is not connected, explain that the user must connect it from Settings; do not claim an external action succeeded.
 """.strip()
 
 
@@ -61,7 +62,11 @@ Hosted recruiter demo boundary:
 
 def _system_prompt() -> str:
     """Return a prompt that matches the tools exposed by this deployment."""
-    boundary = HOSTED_DEMO_RULES if settings.hosted_recruiter_demo else GOOGLE_ACTION_RULES
+    google_available = (
+        not settings.hosted_recruiter_demo
+        or bool(getattr(settings, "hosted_google_oauth_enabled", False))
+    )
+    boundary = GOOGLE_ACTION_RULES if google_available else HOSTED_DEMO_RULES
     return f"{AGENT_SYSTEM_PROMPT}\n\n{boundary}"
 
 

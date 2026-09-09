@@ -58,10 +58,27 @@ class Settings:
         os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-6"),
     )
 
+    # Local Google OAuth remains filesystem-backed for local development.
     google_client_secret_file: str = os.getenv(
         "GOOGLE_CLIENT_SECRET_FILE", "credentials.json"
     )
     google_token_dir: str = os.getenv("GOOGLE_TOKEN_DIR", "tokens")
+
+    # Hosted OAuth uses a Google Web client and encrypted Supabase token persistence.
+    hosted_google_oauth_enabled: bool = _env_flag(
+        "HOSTED_GOOGLE_OAUTH_ENABLED",
+        default=False,
+    )
+    google_oauth_client_id: str = os.getenv("GOOGLE_OAUTH_CLIENT_ID", "").strip()
+    google_oauth_client_secret: str = os.getenv(
+        "GOOGLE_OAUTH_CLIENT_SECRET", ""
+    ).strip()
+    google_oauth_redirect_uri: str = os.getenv(
+        "GOOGLE_OAUTH_REDIRECT_URI", ""
+    ).strip()
+    google_token_encryption_key: str = os.getenv(
+        "GOOGLE_TOKEN_ENCRYPTION_KEY", ""
+    ).strip()
 
     memory_index_dir: str = os.getenv("MEMORY_INDEX_DIR", "data/faiss_index")
     applications_file: str = os.getenv("APPLICATIONS_FILE", "data/applications.json")
@@ -76,10 +93,8 @@ class Settings:
     beta_daily_ai_limit: int = _env_int("BETA_DAILY_AI_LIMIT", 10, minimum=1)
     local_candidate_name: str = os.getenv("LOCAL_CANDIDATE_NAME", "").strip()
 
-    # Hosted recruiter demo removes external Google actions while preserving the
-    # complete analysis, grounding, application-pack and tracker experience.
-    # Authenticated Supabase deployments fail closed into this boundary unless
-    # HOSTED_RECRUITER_DEMO is explicitly set to false for controlled testing.
+    # Authenticated Supabase deployments fail closed into this boundary. Hosted Google
+    # actions are separately opt-in and require a complete web-OAuth configuration.
     hosted_recruiter_demo: bool = _env_flag(
         "HOSTED_RECRUITER_DEMO",
         default=_hosted_recruiter_demo_default(),

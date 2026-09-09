@@ -58,10 +58,10 @@ JobCopilot is deliberately not a mass-application bot. It prefers a shorter, hon
 | Provider resilience | OpenAI primary with optional Anthropic runtime fallback |
 | Provider telemetry | Provider, model, operation, status, latency and available usage metadata |
 | Application tracking | Tenant-scoped tracker state |
-| Gmail and Calendar | Per-user OAuth token and explicit human confirmation gates |
+| Gmail and Calendar | Local OAuth or optional hosted Web OAuth, with explicit human confirmation gates |
 | Agent Chat | Per-user graph, tool set, thread namespace and in-memory checkpoint |
 | Cost control | Configurable daily AI-operation quota per user |
-| Durable hosted state | Supabase-backed profiles, tracker state, beta accounts and atomic quotas |
+| Durable hosted state | Supabase-backed profiles, tracker state, beta accounts, atomic quotas and optional encrypted Google OAuth credentials |
 | Local fallback | Filesystem persistence remains available for local development |
 | Evaluation | Extraction, retrieval and claim-level grounding workflows |
 | Delivery | Premium Streamlit UI, Dockerfile and GitHub Actions CI |
@@ -96,14 +96,14 @@ JobCopilot supports two persistence modes.
 
 For Streamlit Community Cloud, the supported backend is Supabase:
 
-- `jobcopilot_state` stores tenant-scoped verified profile memories, tracker state and private-beta account data;
+- `jobcopilot_state` stores tenant-scoped verified profile memories, tracker state, private-beta account data and, when enabled, encrypted Google OAuth credentials;
 - `jobcopilot_usage` stores durable daily AI usage;
 - `jobcopilot_consume_quota(...)` performs atomic quota consumption so concurrent sessions cannot race past a user's daily limit;
 - Row Level Security is enabled and the application accesses these tables only from trusted server-side code using a Supabase server secret.
 
 FAISS indexes remain disposable: they are rebuilt from the user's verified persistent profile after a restart.
 
-Raw uploaded CV files are not persisted by JobCopilot.
+Raw uploaded CV files are not persisted by JobCopilot. Hosted Google OAuth credentials are encrypted before persistence and are excluded from user exports.
 
 ### Local development — filesystem fallback
 
@@ -146,6 +146,7 @@ Telemetry deliberately excludes:
 - CV and job-offer text;
 - generated emails;
 - API keys;
+- OAuth tokens;
 - raw provider error messages.
 
 ---
@@ -283,7 +284,10 @@ OPENAI_PROFILE_MODEL = "gpt-4.1-nano"
 BETA_AUTH_ENABLED = "true"
 BETA_DAILY_AI_LIMIT = "5"
 DEFAULT_TIMEZONE = "Europe/Paris"
+HOSTED_RECRUITER_DEMO = "true"
 ```
+
+Hosted Google actions remain disabled unless the separately fail-closed Web OAuth configuration is enabled.
 
 Before sharing a recruiter-facing URL, verify:
 
@@ -291,13 +295,16 @@ Before sharing a recruiter-facing URL, verify:
 2. tracker persistence;
 3. quota enforcement;
 4. application behavior after a Streamlit restart;
-5. dedicated credentials for each external tester.
+5. dedicated credentials for each external tester;
+6. if hosted Google OAuth is enabled, the complete consent → callback → Gmail draft / Calendar reminder flow.
 
 See [`docs/STREAMLIT_SUPABASE_DEPLOYMENT.md`](docs/STREAMLIT_SUPABASE_DEPLOYMENT.md) for the full deployment procedure.
 
 ---
 
 ## Google OAuth
+
+### Local development
 
 To enable Gmail and Calendar locally:
 
@@ -308,9 +315,32 @@ To enable Gmail and Calendar locally:
 5. save the downloaded file as `credentials.json` at the repository root;
 6. connect Google from the Settings page.
 
-OAuth credentials and generated tokens are ignored by Git. Each beta user receives a separate token file locally.
+OAuth credentials and generated local tokens are ignored by Git. Each beta user receives a separate local token file.
 
-Google OAuth tokens are intentionally not migrated to Supabase in the current hosted-beta architecture. Gmail and Calendar should remain disabled in the hosted recruiter demo until a secure persistent token-storage design is added.
+### Hosted Streamlit OAuth
+
+Hosted Google OAuth is optional and disabled by default. When enabled, JobCopilot uses a Google **Web application** OAuth client instead of the local callback server.
+
+Required Streamlit secrets are:
+
+```toml
+HOSTED_GOOGLE_OAUTH_ENABLED = "true"
+GOOGLE_OAUTH_CLIENT_ID = "...apps.googleusercontent.com"
+GOOGLE_OAUTH_CLIENT_SECRET = "..."
+GOOGLE_OAUTH_REDIRECT_URI = "https://jobcopilot-recruiter-ai.streamlit.app/"
+GOOGLE_TOKEN_ENCRYPTION_KEY = "a-high-entropy-server-secret-of-at-least-32-characters"
+```
+
+The hosted flow requests only:
+
+- `https://www.googleapis.com/auth/gmail.compose`;
+- `https://www.googleapis.com/auth/calendar.events`.
+
+The callback uses a short-lived HMAC-signed state value bound to the authenticated beta user. Google credentials are encrypted with a server-only key before being stored in Supabase, refreshed server-side when needed, excluded from exports, and deleted on disconnect or application-data deletion.
+
+Gmail drafts and Calendar events remain explicit-confirmation actions. If hosted OAuth is disabled, the authenticated hosted agent does not receive the Google tools at all.
+
+`gmail.compose` is a restricted Gmail scope. For a controlled private beta, keep the Google Auth app in Testing and add only approved test users. A broader public release may require Google OAuth verification and additional security review depending on how restricted-scope data is handled.
 
 ---
 
@@ -423,7 +453,8 @@ SECURITY.md
 ## Current boundaries
 
 - Agent Chat history is process-local and disappears after restart.
-- Google OAuth tokens are not persisted in Supabase; hosted Gmail/Calendar integration is therefore intentionally disabled until secure token persistence is added.
+- Hosted Google OAuth is a private-beta integration and remains disabled unless all server-side OAuth secrets are configured.
+- `gmail.compose` is a restricted scope; broad public rollout may require Google verification/security review.
 - Uploaded image-only PDFs are not OCR-processed.
 - Token counts depend on provider response metadata and may be unavailable.
 - French application quality still needs broader end-to-end testing.

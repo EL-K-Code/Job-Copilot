@@ -4,6 +4,7 @@ pydantic
 pypdf
 python-docx
 requests
+cryptography
 
 langchain
 langgraph
